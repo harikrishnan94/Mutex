@@ -3,8 +3,6 @@
 #include <atomic>
 #include <chrono>
 
-#include <mutex>
-
 namespace parking_lot
 {
 enum MutexLockResult
@@ -16,11 +14,11 @@ enum MutexLockResult
 class Mutex
 {
 private:
-	std::atomic<int8_t> word;
-	std::mutex m;
+	std::atomic<int8_t> word = {};
 
 public:
 	bool try_lock();
+	bool is_locked() const;
 	MutexLockResult lock();
 	void unlock();
 

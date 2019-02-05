@@ -26,6 +26,7 @@ set(
 
 set(LIB "${PROJECT_NAME}")
 set(TEST "test_${PROJECT_NAME}")
+set(BENCH "bench_${PROJECT_NAME}")
 
 set(SRC_PATH "${PROJECT_PATH}/src")
 set(TEST_SRC_PATH "${PROJECT_PATH}/test")
@@ -39,18 +40,22 @@ include(ProjectFiles.cmake)
 include_directories(AFTER "include")
 
 find_package(Threads)
-find_package(Boost REQUIRED COMPONENTS system thread)
+find_package(Boost REQUIRED COMPONENTS system thread program_options)
 find_package(benchmark CONFIG REQUIRED)
 find_path(VCPKG_INCLUDE_DIR NAMES gsl catch.hpp)
 
 include_directories(AFTER ${VCPKG_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
+link_libraries(${Boost_LIBRARIES})
 
 if(NOT MSVC)
     add_compile_options("-Wall" "-pedantic")
 endif(NOT MSVC)
 
 add_library(${LIB} SHARED ${SRC})
-target_link_libraries(${LIB} PRIVATE ${CMAKE_THREAD_LIBS_INIT} ${Boost_LIBRARIES})
+target_link_libraries(${LIB} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+
+add_executable(${BENCH} ${BENCH_SRC})
+target_link_libraries(${BENCH} PRIVATE ${LIB} ${CMAKE_THREAD_LIBS_INIT})
 
 add_executable(${TEST} ${TEST_SRC})
 target_link_libraries(${TEST} PRIVATE ${LIB} ${CMAKE_THREAD_LIBS_INIT})

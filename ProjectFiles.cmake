@@ -8,6 +8,9 @@ set(SRC
     "${SRC_PATH}/ParkingLot.cpp"
     "${SRC_PATH}/Mutex.cpp")
 
+set(BENCH_SRC_PATH "${SRC_PATH}/benchmark")
+set(BENCH_SRC "${BENCH_SRC_PATH}/benchMutex.cpp")
+
 # Set project benchmark files. set(BENCHMARK_SRC "${SRC_PATH}/benchmark.cpp")
 
 # Set project test source files.
