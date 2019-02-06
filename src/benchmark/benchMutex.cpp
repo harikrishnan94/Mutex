@@ -1,4 +1,5 @@
 #include "Mutex.h"
+#include "ThreadLocal.h"
 
 #include <atomic>
 #include <chrono>
@@ -30,6 +31,8 @@ bench_worker(MutexType &m,
              int local_section_len,
              std::atomic<uint64_t> &result)
 {
+	parking_lot::ThreadLocal::RegisterThread();
+
 	std::vector<uint64_t> local_section_data(local_section_len);
 	uint64_t num_increments = 0;
 
@@ -53,6 +56,8 @@ bench_worker(MutexType &m,
 	}
 
 	result += num_increments;
+
+	parking_lot::ThreadLocal::UnregisterThread();
 }
 
 template <typename MutexType>
@@ -91,7 +96,7 @@ bench_mutex(BMArgs args)
 void
 do_bench(BMArgs args)
 {
-	uint64_t parkinglot_mutex_ops = bench_mutex<parking_lot::Mutex>(args);
+	uint64_t parkinglot_mutex_ops = bench_mutex<parking_lot::mutex::Mutex>(args);
 	std::cout << "Parking lot mutex = " << parkinglot_mutex_ops << " ops\n";
 
 	uint64_t pthread_mutex_ops = bench_mutex<std::mutex>(args);

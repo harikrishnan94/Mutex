@@ -45,3 +45,6 @@ CTestTestfile.cmake
 
 build/*
 build-*/*
+
+# Archives
+**/*.zip

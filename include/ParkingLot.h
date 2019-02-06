@@ -44,7 +44,7 @@ namespace detail
 
 		template <typename Clock, typename Duration>
 		std::cv_status
-		wait(std::chrono::time_point<Clock, Duration> deadline)
+		wait(const std::chrono::time_point<Clock, Duration> &deadline)
 		{
 			std::cv_status status = std::cv_status::no_timeout;
 			std::unique_lock<std::mutex> nodeLock(m_mutex);
@@ -243,7 +243,7 @@ public:
 	                      D &&data,
 	                      ToPark &&toPark,
 	                      PreWait &&preWait,
-	                      std::chrono::time_point<Clock, Duration> deadline);
+	                      const std::chrono::time_point<Clock, Duration> &deadline);
 
 	template <typename Key,
 	          typename D,
@@ -256,7 +256,7 @@ public:
 	         D &&data,
 	         ToPark &&toPark,
 	         PreWait &&preWait,
-	         std::chrono::duration<Rep, Period> &timeout)
+	         const std::chrono::duration<Rep, Period> &timeout)
 	{
 		return park_until(key,
 		                  std::forward<D>(data),
@@ -292,7 +292,7 @@ ParkingLot<Data>::park_until(const Key bits,
                              D &&data,
                              ToPark &&toPark,
                              PreWait &&preWait,
-                             std::chrono::time_point<Clock, Duration> deadline)
+                             const std::chrono::time_point<Clock, Duration> &deadline)
 {
 	auto key     = std::hash<Key>{}(bits);
 	auto &bucket = parking_lot::detail::Bucket::bucketFor(key);

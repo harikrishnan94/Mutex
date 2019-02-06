@@ -1,36 +1,42 @@
 #include "Mutex.h"
+#include "ThreadLocal.h"
 
 #include <iostream>
+#include <mutex>
 #include <thread>
 #include <vector>
 
 #include "catch.hpp"
 
-using Mutex = parking_lot::Mutex;
-
-static void
-incremeter(Mutex &m, int &counter, int count)
+TEST_CASE("Mutex Basic", "[Mutex]")
 {
-	for (int i = 0; i < count; i++)
-	{
-		std::lock_guard<Mutex> lock{ m };
+	constexpr int NUMTHREADS = 4;
+	constexpr int COUNT      = 4000000;
 
-		counter++;
-	}
-}
-
-TEST_CASE("Mutex", "Mutex")
-{
-	constexpr int NUM_THREADS = 4;
-	constexpr int COUNT       = 4000000;
+	using namespace parking_lot::mutex;
 
 	Mutex m;
 	std::vector<std::thread> workers;
 	int counter = 0;
 
-	for (int i = 0; i < NUM_THREADS; i++)
+	for (int i = 0; i < NUMTHREADS; i++)
 	{
-		workers.emplace_back(incremeter, std::ref(m), std::ref(counter), COUNT);
+		workers.emplace_back(
+		    [](Mutex &m, int &counter, int count) {
+			    parking_lot::ThreadLocal::RegisterThread();
+
+			    for (int i = 0; i < count; i++)
+			    {
+				    std::lock_guard<Mutex> lock{ m };
+
+				    counter++;
+			    }
+
+			    parking_lot::ThreadLocal::UnregisterThread();
+		    },
+		    std::ref(m),
+		    std::ref(counter),
+		    COUNT);
 	}
 
 	for (auto &worker : workers)
@@ -38,5 +44,71 @@ TEST_CASE("Mutex", "Mutex")
 		worker.join();
 	}
 
-	REQUIRE(counter == COUNT * NUM_THREADS);
+	REQUIRE(counter == COUNT * NUMTHREADS);
+}
+
+TEST_CASE("Deadlock Detection", "[Mutex]")
+{
+	using namespace parking_lot::mutex;
+
+	Mutex m1, m2, m3;
+
+	constexpr int NUMTHREADS = 100;
+
+	std::vector<Mutex> mutexes(NUMTHREADS);
+	std::vector<std::thread> workers;
+	std::atomic<int> deadlock_count = 0;
+
+	// A juvenile thread barrier...
+	std::atomic<int> first_phase_progress   = 0;
+	std::atomic<bool> second_phase_continue = false;
+
+	auto assert_lock_ret = [](auto ret) {
+		static parking_lot::mutex::Mutex assert_mutex;
+		std::lock_guard<parking_lot::mutex::Mutex> assert_lock{ assert_mutex };
+
+		REQUIRE(ret == parking_lot::mutex::MutexLockResult::LOCKED);
+	};
+
+	auto worker = [&](Mutex &m1, Mutex &m2) {
+		parking_lot::ThreadLocal::RegisterThread();
+
+		auto ret = m1.lock();
+
+		assert_lock_ret(ret);
+		first_phase_progress++;
+
+		while (!second_phase_continue)
+			;
+
+		ret = m2.lock();
+
+		if (ret != MutexLockResult::DEADLOCKED)
+			m2.unlock();
+
+		m1.unlock();
+
+		deadlock_count += (ret == MutexLockResult::DEADLOCKED);
+
+		parking_lot::ThreadLocal::UnregisterThread();
+	};
+
+	for (int i = 0; i < NUMTHREADS; i++)
+	{
+		workers.emplace_back(worker, std::ref(mutexes[i]), std::ref(mutexes[(i + 1) % NUMTHREADS]));
+	}
+
+	// Wait till all threads finish acquiring their first lock.
+	while (first_phase_progress != NUMTHREADS)
+		;
+
+	// Now, release threads to let them acquire their second lock.
+	second_phase_continue = true;
+
+	for (auto &worker : workers)
+	{
+		worker.join();
+	}
+
+	REQUIRE(deadlock_count == 1);
 }

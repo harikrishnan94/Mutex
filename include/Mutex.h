@@ -3,9 +3,9 @@
 #include <atomic>
 #include <chrono>
 
-namespace parking_lot
+namespace parking_lot::mutex
 {
-enum MutexLockResult
+enum class MutexLockResult
 {
 	LOCKED,
 	DEADLOCKED
@@ -14,7 +14,9 @@ enum MutexLockResult
 class Mutex
 {
 private:
-	std::atomic<int8_t> word = {};
+	std::atomic<int> word = {};
+
+	static bool check_deadlock(const Mutex *m);
 
 public:
 	bool try_lock();
@@ -22,10 +24,10 @@ public:
 	MutexLockResult lock();
 	void unlock();
 
-	Mutex() = default;
+	Mutex();
 
 	Mutex(Mutex &&)      = delete;
 	Mutex(const Mutex &) = delete;
 };
 
-} // namespace parking_lot
+} // namespace parking_lot::mutex
