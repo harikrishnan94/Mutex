@@ -58,6 +58,7 @@ TEST_CASE("Deadlock Detection", "[Mutex]")
 	std::vector<Mutex> mutexes(NUMTHREADS);
 	std::vector<std::thread> workers;
 	std::atomic<int> deadlock_count = 0;
+	std::atomic<int> success_count  = 0;
 
 	// A juvenile thread barrier...
 	std::atomic<int> first_phase_progress   = 0;
@@ -88,7 +89,10 @@ TEST_CASE("Deadlock Detection", "[Mutex]")
 
 		m1.unlock();
 
-		deadlock_count += (ret == MutexLockResult::DEADLOCKED);
+		if (ret == MutexLockResult::DEADLOCKED)
+			deadlock_count++;
+		else
+			success_count++;
 
 		parking_lot::ThreadLocal::UnregisterThread();
 	};
@@ -111,4 +115,5 @@ TEST_CASE("Deadlock Detection", "[Mutex]")
 	}
 
 	REQUIRE(deadlock_count == 1);
+	REQUIRE(success_count == NUMTHREADS - 1);
 }
