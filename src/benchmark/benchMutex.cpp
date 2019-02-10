@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <ostream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -20,11 +21,22 @@ struct BMArgs
 {
 	int num_seconds;
 	int num_threads;
-	int crit_section_len;
-	int local_section_len;
+	uint64_t crit_section_duration;
+	uint64_t local_section_duration;
 
 	bool pthread;
 	bool parkinglot;
+
+	friend std::ostream &
+	operator<<(std::ostream &out, BMArgs args)
+	{
+		out << "Threads = " << args.num_threads
+		    << ", Critical Section Duration = " << args.crit_section_duration << " ns"
+		    << ", Local Section Duration = " << args.local_section_duration << " ns"
+		    << ", Benchmark Duration = " << args.num_seconds << " s";
+
+		return out;
+	}
 };
 
 static void report_bench(const std::string &str, uint64_t ops);
@@ -34,36 +46,52 @@ template <typename MutexType>
 void
 bench_worker(MutexType &m,
              std::atomic<bool> &quit,
-             std::vector<uint64_t> &crit_section_data,
-             int local_section_len,
-             std::atomic<uint64_t> &result)
+             volatile uint64_t &shared_data,
+             uint64_t critical_section_duration,
+             uint64_t local_section_duration,
+             std::atomic<uint64_t> &total_operations)
 {
 	parking_lot::ThreadLocal::RegisterThread();
 
-	std::vector<uint64_t> local_section_data(local_section_len);
-	uint64_t num_increments = 0;
+	volatile uint64_t local_section_data = 0;
+	uint64_t num_operations              = 0;
 
-	auto do_increment = [](std::vector<uint64_t> &vec) {
-		for (auto &val : vec)
+	auto delay_ns = [](uint64_t ns, volatile uint64_t &data) {
+		if (ns)
 		{
-			val++;
+			auto end = std::chrono::high_resolution_clock::now() + std::chrono::nanoseconds{ ns };
+
+			while (std::chrono::high_resolution_clock::now() < end)
+			{
+				++data;
+			}
 		}
 	};
 
 	while (!quit)
 	{
-		if (crit_section_data.size())
+		// Here we model both local work outside of the critical section as well as
+		// some work inside of the critical section. The idea is to capture some
+		// more or less realisitic contention levels.
+		// If contention is too low, the benchmark won't measure anything useful.
+		// If contention is unrealistically high, the benchmark will favor
+		// bad mutex implementations that block and otherwise distract threads
+		// from the mutex and shared state for as much as possible.
+		// To achieve this, amount of local work is multiplied by number of threads
+		// to keep ratio between local work and critical section approximately
+		// equal regardless of number of threads.
+
 		{
 			std::lock_guard<MutexType> lock{ m };
 
-			do_increment(crit_section_data);
+			delay_ns(critical_section_duration, shared_data);
 		}
 
-		do_increment(local_section_data);
-		num_increments++;
+		delay_ns(local_section_duration, local_section_data);
+		num_operations++;
 	}
 
-	result += num_increments;
+	total_operations += num_operations;
 
 	parking_lot::ThreadLocal::UnregisterThread();
 }
@@ -73,24 +101,25 @@ uint64_t
 bench_mutex(BMArgs args)
 {
 	MutexType m;
-	std::atomic<bool> quit = {};
-	std::vector<uint64_t> crit_section_data(args.crit_section_len);
+	std::atomic<bool> quit        = {};
+	volatile uint64_t shared_data = 0;
 	std::vector<std::thread> workers;
-	std::atomic<uint64_t> num_increments = 0;
+	std::atomic<uint64_t> total_operations = 0;
 
-	std::chrono::seconds wait_time{ args.num_seconds };
+	std::chrono::seconds bench_time{ args.num_seconds };
 
 	for (int i = 0; i < args.num_threads; i++)
 	{
 		workers.emplace_back(bench_worker<MutexType>,
 		                     std::ref(m),
 		                     std::ref(quit),
-		                     std::ref(crit_section_data),
-		                     args.local_section_len,
-		                     std::ref(num_increments));
+		                     std::ref(shared_data),
+		                     args.crit_section_duration,
+		                     args.local_section_duration * args.num_threads,
+		                     std::ref(total_operations));
 	}
 
-	std::this_thread::sleep_for(wait_time);
+	std::this_thread::sleep_for(bench_time);
 	quit.store(true);
 
 	for (auto &worker : workers)
@@ -98,24 +127,13 @@ bench_mutex(BMArgs args)
 		worker.join();
 	}
 
-	// Detect error (Must not happen)
-	for (auto count : crit_section_data)
-	{
-		if (count != num_increments)
-		{
-			num_increments = 0;
-			break;
-		}
-	}
-
-	return num_increments;
+	return total_operations;
 }
 
 static void
 do_bench(BMArgs args)
 {
-	std::cout << "Benchmarking with " << args.num_threads << " threads for " << args.num_seconds
-	          << " s ...\n";
+	std::cout << "Benchmark -> " << args << std::endl;
 
 	if (args.parkinglot)
 	{
@@ -175,14 +193,13 @@ parse_args(int argc, const char *argv[])
 	                                  "# Threads")("exectime",
 	                                               value<int>()->default_value(1)->required(),
 	                                               "Execution time of benchmark in seconds")(
-	    "critsectionlen",
-	    value<int>()->default_value(1)->required(),
-	    "Units of work to be done INSIDE "
-	    "critical section (Unit of work is incrementing a counter)")(
-	    "localsectionlen",
-	    value<int>()->default_value(0)->required(),
-	    "Units of work to be done OUTSIDE "
-	    "critical section (Unit of work is incrementing a counter)")(
+	    "critsection",
+	    value<uint64_t>()->default_value(1)->required(),
+	    "Amount of time spent INSIDE "
+	    "critical section (ns)")("localsection",
+	                             value<uint64_t>()->default_value(0)->required(),
+	                             "Amount of time spent OUTSIDE "
+	                             "critical section (ns)")(
 	    "pthread",
 	    value<bool>()->default_value(true)->required(),
 	    "Benchmark Pthread")("parkinglot",
@@ -205,17 +222,19 @@ parse_args(int argc, const char *argv[])
 
 			notify(vm);
 
-			args.num_threads       = vm["numthreads"].as<int>();
-			args.num_seconds       = vm["exectime"].as<int>();
-			args.crit_section_len  = vm["critsectionlen"].as<int>();
-			args.local_section_len = vm["localsectionlen"].as<int>();
-			args.pthread           = vm["pthread"].as<bool>();
-			args.parkinglot        = vm["parkinglot"].as<bool>();
+			args.num_threads            = vm["numthreads"].as<int>();
+			args.num_seconds            = vm["exectime"].as<int>();
+			args.crit_section_duration  = vm["critsection"].as<uint64_t>();
+			args.local_section_duration = vm["localsection"].as<uint64_t>();
+			args.pthread                = vm["pthread"].as<bool>();
+			args.parkinglot             = vm["parkinglot"].as<bool>();
 
 			if (!args.parkinglot && !args.pthread)
+			{
 				throw std::string{
 					"ERROR: Must include benchmark for one of Pthread / Parkinglot Mutex"
 				};
+			}
 
 			return args;
 		}
