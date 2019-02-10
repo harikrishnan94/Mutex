@@ -16,7 +16,14 @@ class Mutex
 private:
 	std::atomic<int> word = {};
 
-	static bool check_deadlock(const Mutex *m);
+	bool check_deadlock() const;
+	bool park() const;
+	void announce_wait() const;
+	void denounce_wait() const;
+
+	bool uncontended_path_available();
+	bool try_lock_contended();
+	MutexLockResult lock_contended();
 
 public:
 	bool try_lock();

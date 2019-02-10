@@ -1,13 +1,16 @@
 #include "Mutex.h"
 #include "ThreadLocal.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <exception>
 #include <inttypes.h>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -19,8 +22,12 @@ struct BMArgs
 	int num_threads;
 	int crit_section_len;
 	int local_section_len;
+
+	bool pthread;
+	bool parkinglot;
 };
 
+static void report_bench(const std::string &str, uint64_t ops);
 static BMArgs parse_args(int argc, const char *argv[]);
 
 template <typename MutexType>
@@ -45,6 +52,7 @@ bench_worker(MutexType &m,
 
 	while (!quit)
 	{
+		if (crit_section_data.size())
 		{
 			std::lock_guard<MutexType> lock{ m };
 
@@ -90,23 +98,66 @@ bench_mutex(BMArgs args)
 		worker.join();
 	}
 
+	// Detect error (Must not happen)
+	for (auto count : crit_section_data)
+	{
+		if (count != num_increments)
+		{
+			num_increments = 0;
+			break;
+		}
+	}
+
 	return num_increments;
 }
 
-void
+static void
 do_bench(BMArgs args)
 {
-	uint64_t parkinglot_mutex_ops = bench_mutex<parking_lot::mutex::Mutex>(args);
-	std::cout << "Parking lot mutex = " << parkinglot_mutex_ops << " ops\n";
+	std::cout << "Benchmarking with " << args.num_threads << " threads for " << args.num_seconds
+	          << " s ...\n";
 
-	uint64_t pthread_mutex_ops = bench_mutex<std::mutex>(args);
-	std::cout << "Pthread lot mutex = " << pthread_mutex_ops << " ops\n";
+	if (args.parkinglot)
+	{
+		uint64_t parkinglot_mutex_ops = bench_mutex<parking_lot::mutex::Mutex>(args);
+		report_bench("Parking lot mutex = ", parkinglot_mutex_ops / args.num_seconds);
+	}
+
+	if (args.pthread)
+	{
+		uint64_t pthread_mutex_ops = bench_mutex<std::mutex>(args);
+		report_bench("Pthread mutex = ", pthread_mutex_ops / args.num_seconds);
+	}
 }
 
 int
 main(int argc, const char *argv[])
 {
 	do_bench(parse_args(argc, argv));
+}
+
+static void
+report_bench(const std::string &str, uint64_t ops)
+{
+	auto human_readable_num = [](uint64_t number) {
+		int i                     = 0;
+		const std::string units[] = { "", "K", "M", "G", "T", "P", "E", "Z", "Y" };
+		uint64_t rem              = number;
+
+		while (number > 1000)
+		{
+			rem = number % 1000;
+			number /= 1000;
+			i++;
+		}
+
+		return std::to_string(number) + "." + std::to_string(rem) + " " + units[i];
+	};
+
+	if (ops)
+		std::cout << std::setw(25) << str << human_readable_num(ops) << "ops\n";
+	else
+		std::cout << std::setw(25) << str << "ERROR\n";
 }
 
 static BMArgs
@@ -117,7 +168,10 @@ parse_args(int argc, const char *argv[])
 	options_description desc{ "Benchmark Options" };
 	desc.add_options()("help,h",
 	                   "Help screen")("numthreads",
-	                                  value<int>()->default_value(4)->required(),
+	                                  value<int>()
+	                                      ->default_value(
+	                                          std::max(std::thread::hardware_concurrency(), 1U))
+	                                      ->required(),
 	                                  "# Threads")("exectime",
 	                                               value<int>()->default_value(1)->required(),
 	                                               "Execution time of benchmark in seconds")(
@@ -128,7 +182,12 @@ parse_args(int argc, const char *argv[])
 	    "localsectionlen",
 	    value<int>()->default_value(0)->required(),
 	    "Units of work to be done OUTSIDE "
-	    "critical section (Unit of work is incrementing a counter)");
+	    "critical section (Unit of work is incrementing a counter)")(
+	    "pthread",
+	    value<bool>()->default_value(true)->required(),
+	    "Benchmark Pthread")("parkinglot",
+	                         value<bool>()->default_value(true)->required(),
+	                         "Benchmark Parkinglot Mutex");
 
 	variables_map vm;
 	store(parse_command_line(argc, argv, desc), vm);
@@ -150,18 +209,31 @@ parse_args(int argc, const char *argv[])
 			args.num_seconds       = vm["exectime"].as<int>();
 			args.crit_section_len  = vm["critsectionlen"].as<int>();
 			args.local_section_len = vm["localsectionlen"].as<int>();
+			args.pthread           = vm["pthread"].as<bool>();
+			args.parkinglot        = vm["parkinglot"].as<bool>();
+
+			if (!args.parkinglot && !args.pthread)
+				throw std::string{
+					"ERROR: Must include benchmark for one of Pthread / Parkinglot Mutex"
+				};
 
 			return args;
 		}
-		catch (const std::exception &ex)
+		catch (const std::string &ex)
 		{
-			std::cerr << ex.what() << '\n';
+			std::cerr << ex << '\n';
 			std::cout << desc << '\n';
 			std::exit(-1);
 		}
 		catch (error &e)
 		{
 			std::cerr << e.what() << '\n';
+			std::cout << desc << '\n';
+			std::exit(-1);
+		}
+		catch (const std::exception &ex)
+		{
+			std::cerr << ex.what() << '\n';
 			std::cout << desc << '\n';
 			std::exit(-1);
 		}
