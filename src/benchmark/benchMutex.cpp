@@ -131,17 +131,25 @@ static void
 do_bench(BMArgs args)
 {
 	std::cout << "Benchmark -> " << args << std::endl;
+	uint64_t parkinglot_mutex_ops = 0, pthread_mutex_ops = 0;
 
 	if (args.parkinglot)
 	{
-		uint64_t parkinglot_mutex_ops = bench_mutex<parking_lot::mutex::Mutex>(args);
+		parkinglot_mutex_ops = bench_mutex<parking_lot::mutex::Mutex>(args);
 		report_bench("Parking lot mutex = ", parkinglot_mutex_ops / args.num_seconds);
 	}
 
 	if (args.pthread)
 	{
-		uint64_t pthread_mutex_ops = bench_mutex<std::mutex>(args);
+		pthread_mutex_ops = bench_mutex<std::mutex>(args);
 		report_bench("Pthread mutex = ", pthread_mutex_ops / args.num_seconds);
+	}
+
+	if (parkinglot_mutex_ops && pthread_mutex_ops)
+	{
+		std::cout << std::setw(25) << "Improvement = " << std::fixed << std::setprecision(2)
+		          << (100 * (parkinglot_mutex_ops / static_cast<double>(pthread_mutex_ops) - 1))
+		          << "%\n";
 	}
 }
 
@@ -166,7 +174,11 @@ report_bench(const std::string &str, uint64_t ops)
 			i++;
 		}
 
-		return std::to_string(number) + "." + std::to_string(rem) + " " + units[i];
+		auto num_str = std::to_string(number + static_cast<double>(rem) / 1000);
+
+		num_str.erase(num_str.find_last_not_of("0") + 1);
+
+		return num_str + " " + units[i];
 	};
 
 	if (ops)
