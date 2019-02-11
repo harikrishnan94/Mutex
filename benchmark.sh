@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 for critsection in {1,20,50,100,200}; do
-	for numthreads in {2,4,6,8,12,16,24,32,48,64,96,128,192,256,512,768,1024}; do
+	for numthreads in {1,2,4,6,8,12,16,24,32,48,64,96,128,192,256,512,768,1024}; do
 		"${BUILDDIR}/bench_parkinglot" --exectime=$EXECTIME --numthreads=$numthreads --critsection=$critsection --localsection=$LOCALSECTION
 	done
 done

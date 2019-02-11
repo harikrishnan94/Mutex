@@ -77,9 +77,6 @@ bench_worker(MutexType &m,
 		// If contention is unrealistically high, the benchmark will favor
 		// bad mutex implementations that block and otherwise distract threads
 		// from the mutex and shared state for as much as possible.
-		// To achieve this, amount of local work is multiplied by number of threads
-		// to keep ratio between local work and critical section approximately
-		// equal regardless of number of threads.
 
 		{
 			std::lock_guard<MutexType> lock{ m };
@@ -115,7 +112,7 @@ bench_mutex(BMArgs args)
 		                     std::ref(quit),
 		                     std::ref(shared_data),
 		                     args.crit_section_duration,
-		                     args.local_section_duration * args.num_threads,
+		                     args.local_section_duration,
 		                     std::ref(total_operations));
 	}
 
