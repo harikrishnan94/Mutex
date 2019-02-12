@@ -13,7 +13,7 @@ TEST_CASE("Mutex Basic", "[Mutex]")
 	constexpr int NUMTHREADS = 4;
 	constexpr int COUNT      = 4000000;
 
-	using namespace parking_lot::mutex;
+	using Mutex = parking_lot::mutex::Mutex;
 
 	Mutex m;
 	std::vector<std::thread> workers;
@@ -49,9 +49,7 @@ TEST_CASE("Mutex Basic", "[Mutex]")
 
 TEST_CASE("Deadlock Detection", "[Mutex]")
 {
-	using namespace parking_lot::mutex;
-
-	Mutex m1, m2, m3;
+	using Mutex = parking_lot::mutex::DeadlockSafeMutex;
 
 	constexpr int NUMTHREADS = 100;
 
@@ -84,12 +82,12 @@ TEST_CASE("Deadlock Detection", "[Mutex]")
 
 		ret = m2.lock();
 
-		if (ret != MutexLockResult::DEADLOCKED)
+		if (ret != parking_lot::mutex::MutexLockResult::DEADLOCKED)
 			m2.unlock();
 
 		m1.unlock();
 
-		if (ret == MutexLockResult::DEADLOCKED)
+		if (ret == parking_lot::mutex::MutexLockResult::DEADLOCKED)
 			deadlock_count++;
 		else
 			success_count++;
