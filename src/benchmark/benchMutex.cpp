@@ -46,17 +46,17 @@ template <typename MutexType>
 void
 bench_worker(MutexType &m,
              std::atomic<bool> &quit,
-             volatile uint64_t &shared_data,
+             uint64_t &shared_data,
              uint64_t critical_section_duration,
              uint64_t local_section_duration,
              std::atomic<uint64_t> &total_operations)
 {
 	parking_lot::ThreadLocal::RegisterThread();
 
-	volatile uint64_t local_section_data = 0;
-	uint64_t num_operations              = 0;
+	uint64_t local_section_data = 0;
+	uint64_t num_operations     = 0;
 
-	auto delay_ns = [](uint64_t ns, volatile uint64_t &data) {
+	auto delay_ns = [](uint64_t ns, uint64_t &data) {
 		if (ns)
 		{
 			auto end = std::chrono::high_resolution_clock::now() + std::chrono::nanoseconds{ ns };
@@ -98,8 +98,8 @@ uint64_t
 bench_mutex(BMArgs args)
 {
 	MutexType m;
-	std::atomic<bool> quit        = {};
-	volatile uint64_t shared_data = 0;
+	std::atomic<bool> quit = {};
+	uint64_t shared_data   = 0;
 	std::vector<std::thread> workers;
 	std::atomic<uint64_t> total_operations = 0;
 

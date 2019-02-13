@@ -10,6 +10,7 @@ set(SRC
 
 set(BENCH_SRC_PATH "${SRC_PATH}/benchmark")
 set(BENCH_SRC "${BENCH_SRC_PATH}/benchMutex.cpp")
+set(BENCH2_SRC "${BENCH_SRC_PATH}/benchMutex2.cpp")
 
 # Set project benchmark files. set(BENCHMARK_SRC "${SRC_PATH}/benchmark.cpp")
 
