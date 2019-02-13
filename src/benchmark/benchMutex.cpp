@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <numeric>
 #include <ostream>
 #include <string>
 #include <thread>
@@ -39,7 +40,14 @@ struct BMArgs
 	}
 };
 
-static void report_bench(const std::string &str, uint64_t ops);
+struct BMResult
+{
+	uint64_t ops;
+	uint64_t stddev;
+};
+
+static uint64_t std_dev(const std::vector<uint64_t> &vec);
+static void report_bench(const std::string &str, BMResult result);
 static BMArgs parse_args(int argc, const char *argv[]);
 
 template <typename MutexType>
@@ -49,7 +57,7 @@ bench_worker(MutexType &m,
              uint64_t &shared_data,
              uint64_t critical_section_duration,
              uint64_t local_section_duration,
-             std::atomic<uint64_t> &total_operations)
+             std::vector<uint64_t> &operations)
 {
 	parking_lot::ThreadLocal::RegisterThread();
 
@@ -88,22 +96,28 @@ bench_worker(MutexType &m,
 		num_operations++;
 	}
 
-	total_operations += num_operations;
+	{
+		std::lock_guard<MutexType> lock{ m };
+
+		operations.push_back(num_operations);
+	}
 
 	parking_lot::ThreadLocal::UnregisterThread();
 }
 
 template <typename MutexType>
-uint64_t
+BMResult
 bench_mutex(BMArgs args)
 {
 	MutexType m;
 	std::atomic<bool> quit = {};
 	uint64_t shared_data   = 0;
 	std::vector<std::thread> workers;
-	std::atomic<uint64_t> total_operations = 0;
+	std::vector<uint64_t> operations;
 
 	std::chrono::seconds bench_time{ args.num_seconds };
+
+	auto start = std::chrono::steady_clock::now();
 
 	for (int i = 0; i < args.num_threads; i++)
 	{
@@ -113,7 +127,7 @@ bench_mutex(BMArgs args)
 		                     std::ref(shared_data),
 		                     args.crit_section_duration,
 		                     args.local_section_duration,
-		                     std::ref(total_operations));
+		                     std::ref(operations));
 	}
 
 	std::this_thread::sleep_for(bench_time);
@@ -124,31 +138,39 @@ bench_mutex(BMArgs args)
 		worker.join();
 	}
 
-	return total_operations;
+	std::chrono::duration<double> duration = std::chrono::steady_clock::now() - start;
+	auto elapsed                           = duration.count();
+	auto total_operations =
+	    std::accumulate(operations.begin(), operations.end(), 0, std::plus<uint64_t>{});
+	auto stddev_operations = std_dev(operations);
+
+	return { static_cast<uint64_t>(total_operations / elapsed), stddev_operations };
 }
 
 static void
 do_bench(BMArgs args)
 {
 	std::cout << "Benchmark -> " << args << std::endl;
-	uint64_t parkinglot_mutex_ops = 0, pthread_mutex_ops = 0;
+	BMResult parkinglot_result{}, pthread_result{};
 
 	if (args.parkinglot)
 	{
-		parkinglot_mutex_ops = bench_mutex<parking_lot::mutex::Mutex>(args);
-		report_bench("Parking lot mutex = ", parkinglot_mutex_ops / args.num_seconds);
+		parkinglot_result = bench_mutex<parking_lot::mutex::Mutex>(args);
+
+		report_bench("Parkinglot Mutex = ", parkinglot_result);
 	}
 
 	if (args.pthread)
 	{
-		pthread_mutex_ops = bench_mutex<std::mutex>(args);
-		report_bench("Pthread mutex = ", pthread_mutex_ops / args.num_seconds);
+		pthread_result = bench_mutex<std::mutex>(args);
+
+		report_bench("Pthread Mutex = ", pthread_result);
 	}
 
-	if (parkinglot_mutex_ops && pthread_mutex_ops)
+	if (args.parkinglot && args.pthread)
 	{
 		std::cout << std::setw(25) << "Improvement = " << std::fixed << std::setprecision(2)
-		          << (100 * (parkinglot_mutex_ops / static_cast<double>(pthread_mutex_ops) - 1))
+		          << (100 * (parkinglot_result.ops / static_cast<double>(pthread_result.ops) - 1))
 		          << "%\n";
 	}
 }
@@ -160,7 +182,7 @@ main(int argc, const char *argv[])
 }
 
 static void
-report_bench(const std::string &str, uint64_t ops)
+report_bench(const std::string &str, BMResult result)
 {
 	auto human_readable_num = [](uint64_t number) {
 		int i                     = 0;
@@ -181,10 +203,30 @@ report_bench(const std::string &str, uint64_t ops)
 		return num_str + " " + units[i];
 	};
 
-	if (ops)
-		std::cout << std::setw(25) << str << human_readable_num(ops) << "ops\n";
+	if (result.ops)
+	{
+		std::cout << std::setw(25) << str << human_readable_num(result.ops) << "ops (± "
+		          << std::fixed << std::setprecision(2)
+		          << (result.stddev * 100 / static_cast<double>(result.ops)) << "%)\n";
+	}
 	else
+	{
 		std::cout << std::setw(25) << str << "ERROR\n";
+	}
+}
+
+static uint64_t
+std_dev(const std::vector<uint64_t> &vec)
+{
+	uint64_t sum      = std::accumulate(std::begin(vec), std::end(vec), 0);
+	uint64_t mean     = sum / vec.size();
+	uint64_t variance = 0;
+
+	std::for_each(std::begin(vec), std::end(vec), [&](auto val) {
+		variance += (val - mean) * (val - mean);
+	});
+
+	return sqrt(variance / vec.size());
 }
 
 static BMArgs
