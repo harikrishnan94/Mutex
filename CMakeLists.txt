@@ -32,6 +32,11 @@ set(BENCH2 "bench2_${PROJECT_NAME}")
 set(SRC_PATH "${PROJECT_PATH}/src")
 set(TEST_SRC_PATH "${PROJECT_PATH}/test")
 
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
+endif()
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 message(STATUS "Building ${CMAKE_BUILD_TYPE} version!")
