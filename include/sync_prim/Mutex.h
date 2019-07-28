@@ -8,7 +8,6 @@
 #include <limits.h>
 #include <mutex>
 #include <thread>
-#include <unistd.h>
 #include <unordered_map>
 
 #include <folly/synchronization/ParkingLot.h>

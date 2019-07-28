@@ -32,11 +32,6 @@ set(BENCH2 "bench2_${PROJECT_NAME}")
 set(SRC_PATH "${PROJECT_PATH}/src")
 set(TEST_SRC_PATH "${PROJECT_PATH}/test")
 
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE_PROGRAM}")
-endif()
-
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 message(STATUS "Building ${CMAKE_BUILD_TYPE} version!")
@@ -50,19 +45,21 @@ find_package(Boost REQUIRED COMPONENTS system thread program_options)
 find_package(benchmark CONFIG REQUIRED)
 find_path(VCPKG_INCLUDE_DIR NAMES gsl catch.hpp)
 find_package(folly CONFIG REQUIRED)
+find_package(ZLIB REQUIRED)
 
 include_directories(AFTER ${VCPKG_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
 link_libraries(${Boost_LIBRARIES}
                Folly::folly
                Folly::folly_deps
                Folly::follybenchmark
-               Folly::folly_test_util)
+               Folly::folly_test_util
+               ZLIB::ZLIB)
 
 if(NOT MSVC)
     add_compile_options("-Wall" "-pedantic")
 endif(NOT MSVC)
 
-add_library(${LIB} SHARED ${SRC})
+add_library(${LIB} ${SRC})
 target_link_libraries(${LIB} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
 
 add_executable(${BENCH} ${BENCH_SRC})
