@@ -23,62 +23,51 @@
 
 #include <benchmark/benchmark.h>
 
-void
-BM_Mutex(benchmark::State &state)
-{
-	static parking_lot::mutex::Mutex mu;
+void BM_Mutex(benchmark::State &state) {
+  static parking_lot::mutex::Mutex mu;
 
-	for (auto _ : state)
-	{
-		std::lock_guard<parking_lot::mutex::Mutex> lock(mu);
-	}
+  for (auto _ : state) {
+    std::lock_guard<parking_lot::mutex::Mutex> lock(mu);
+  }
 }
 
 BENCHMARK(BM_Mutex)->UseRealTime()->Threads(1)->ThreadPerCpu();
 
-static void
-DelayNs(int64_t ns, uint64_t &data)
-{
-	if (ns)
-	{
-		auto end = std::chrono::high_resolution_clock::now() + std::chrono::nanoseconds{ ns };
+static void DelayNs(int64_t ns, uint64_t &data) {
+  if (ns) {
+    auto end = std::chrono::high_resolution_clock::now() +
+               std::chrono::nanoseconds{ns};
 
-		while (std::chrono::high_resolution_clock::now() < end)
-		{
-			++data;
-		}
-	}
+    while (std::chrono::high_resolution_clock::now() < end) {
+      ++data;
+    }
+  }
 }
 
-template <typename MutexType>
-void
-BM_Contended(benchmark::State &state)
-{
-	struct Shared
-	{
-		MutexType mu;
-		uint64_t data = 0;
-	};
+template <typename MutexType> void BM_Contended(benchmark::State &state) {
+  struct Shared {
+    MutexType mu;
+    uint64_t data = 0;
+  };
 
-	static Shared shared;
-	uint64_t local = 0;
+  static Shared shared;
+  uint64_t local = 0;
 
-	for (auto _ : state)
-	{
-		// Here we model both local work outside of the critical section as well as
-		// some work inside of the critical section. The idea is to capture some
-		// more or less realisitic contention levels.
-		// If contention is too low, the benchmark won't measure anything useful.
-		// If contention is unrealistically high, the benchmark will favor
-		// bad mutex implementations that block and otherwise distract threads
-		// from the mutex and shared state for as much as possible.
-		// To achieve this amount of local work is multiplied by number of threads
-		// to keep ratio between local work and critical section approximately
-		// equal regardless of number of threads.
-		DelayNs(100 * state.threads, local);
-		std::lock_guard<MutexType> locker(shared.mu);
-		DelayNs(state.range(0), shared.data);
-	}
+  for (auto _ : state) {
+    // Here we model both local work outside of the critical section as well as
+    // some work inside of the critical section. The idea is to capture some
+    // more or less realisitic contention levels.
+    // If contention is too low, the benchmark won't measure anything useful.
+    // If contention is unrealistically high, the benchmark will favor
+    // bad mutex implementations that block and otherwise distract threads
+    // from the mutex and shared state for as much as possible.
+    // To achieve this amount of local work is multiplied by number of threads
+    // to keep ratio between local work and critical section approximately
+    // equal regardless of number of threads.
+    DelayNs(100 * state.threads, local);
+    std::lock_guard<MutexType> locker(shared.mu);
+    DelayNs(state.range(0), shared.data);
+  }
 }
 
 BENCHMARK_TEMPLATE(BM_Contended, parking_lot::mutex::Mutex)
