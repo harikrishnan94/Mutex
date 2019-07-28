@@ -8,7 +8,7 @@
   See the LICENSE file for more information.
 ------------------------------------------------------------------------*/
 
-#include "TraceLog.h"
+#include "sync_prim/TraceLog.h"
 
 #include <algorithm>
 #include <memory>

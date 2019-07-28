@@ -1,4 +1,4 @@
-#include "Mutex.h"
+#include "sync_prim/Mutex.h"
 
 namespace sync_prim::mutex {
 namespace detail {

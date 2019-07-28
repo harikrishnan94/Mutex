@@ -1,4 +1,4 @@
-#include "ThreadRegistry.h"
+#include "sync_prim/ThreadRegistry.h"
 
 #include <atomic>
 #include <cassert>
