@@ -1,5 +1,5 @@
 #include "Mutex.h"
-#include "ThreadLocal.h"
+#include "ThreadRegistry.h"
 
 #include <algorithm>
 #include <atomic>
@@ -52,7 +52,7 @@ void bench_worker(MutexType &m, std::atomic<bool> &quit, uint64_t &shared_data,
                   uint64_t critical_section_duration,
                   uint64_t local_section_duration,
                   std::vector<uint64_t> &operations) {
-  parking_lot::ThreadLocal::RegisterThread();
+  sync_prim::ThreadRegistry::RegisterThread();
 
   uint64_t local_section_data = 0;
   uint64_t num_operations = 0;
@@ -93,7 +93,7 @@ void bench_worker(MutexType &m, std::atomic<bool> &quit, uint64_t &shared_data,
     operations.push_back(num_operations);
   }
 
-  parking_lot::ThreadLocal::UnregisterThread();
+  sync_prim::ThreadRegistry::UnregisterThread();
 }
 
 template <typename MutexType> BMResult bench_mutex(BMArgs args) {
@@ -135,7 +135,7 @@ static void do_bench(BMArgs args) {
   BMResult parkinglot_result{}, pthread_result{};
 
   if (args.parkinglot) {
-    parkinglot_result = bench_mutex<parking_lot::mutex::Mutex>(args);
+    parkinglot_result = bench_mutex<sync_prim::mutex::Mutex>(args);
 
     report_bench("Parkinglot Mutex = ", parkinglot_result);
   }

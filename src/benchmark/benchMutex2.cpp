@@ -13,7 +13,7 @@
 // limitations under the License.
 
 #include "Mutex.h"
-#include "ThreadLocal.h"
+#include "ThreadRegistry.h"
 
 #include <chrono>
 #include <cstdint>
@@ -24,10 +24,10 @@
 #include <benchmark/benchmark.h>
 
 void BM_Mutex(benchmark::State &state) {
-  static parking_lot::mutex::Mutex mu;
+  static sync_prim::mutex::Mutex mu;
 
   for (auto _ : state) {
-    std::lock_guard<parking_lot::mutex::Mutex> lock(mu);
+    std::lock_guard<sync_prim::mutex::Mutex> lock(mu);
   }
 }
 
@@ -70,7 +70,7 @@ template <typename MutexType> void BM_Contended(benchmark::State &state) {
   }
 }
 
-BENCHMARK_TEMPLATE(BM_Contended, parking_lot::mutex::Mutex)
+BENCHMARK_TEMPLATE(BM_Contended, sync_prim::mutex::Mutex)
     ->UseRealTime()
     // ThreadPerCpu poorly handles non-power-of-two CPU counts.
     ->Threads(1)

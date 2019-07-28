@@ -9,13 +9,13 @@
 
 #pragma once
 
-#include "ThreadLocal.h"
+#include "ThreadRegistry.h"
 
 #include <atomic>
 #include <memory>
 #include <mutex>
 
-namespace parking_lot {
+namespace sync_prim {
 //---------------------------------------------------------
 // Logs TRACE events to memory.
 // Iterator should only be used after logging is complete.
@@ -72,7 +72,7 @@ public:
       evt = allocateEventFromNewPage(); // Double-checked locking is performed
                                         // inside here.
 
-    evt->tid = ThreadLocal::ThreadID();
+    evt->tid = ThreadRegistry::ThreadID();
     evt->fmt = fmt;
     evt->param1 = param1;
     evt->param2 = param2;
@@ -127,7 +127,7 @@ public:
   static TraceLog Instance;
 };
 
-} // namespace parking_lot
+} // namespace sync_prim
 
 #define TRACELOG(fmt, param1, param2)                                          \
   TraceLog::Instance.log(fmt, reinterpret_cast<uintptr_t>(param1),             \

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "ParkingLot.h"
-#include "ThreadLocal.h"
+#include "ThreadRegistry.h"
 
 #include <algorithm>
 #include <chrono>
@@ -12,14 +11,16 @@
 #include <unistd.h>
 #include <unordered_map>
 
-namespace parking_lot::mutex {
+#include <folly/synchronization/ParkingLot.h>
+
+namespace sync_prim::mutex {
 template <bool EnableDeadlockDetection> class MutexImpl;
 
 using Mutex = MutexImpl<false>;
 using DeadlockSafeMutex = MutexImpl<true>;
 
 namespace detail {
-extern parking_lot::ParkingLot<std::nullptr_t> parkinglot;
+extern folly::ParkingLot<std::nullptr_t> parkinglot;
 extern std::unique_ptr<std::atomic<const DeadlockSafeMutex *>[]>
     thread_waiting_on;
 extern std::mutex dead_lock_verify_mutex;
@@ -72,14 +73,14 @@ private:
 
     static LockWord get_contented_word() {
       if constexpr (EnableDeadlockDetection)
-        return ThreadLocal::ThreadID() | M_CONTENDED_MASK;
+        return ThreadRegistry::ThreadID() | M_CONTENDED_MASK;
       else
         return LockState::LS_CONTENTED;
     }
 
     static LockWord get_lock_word() {
       if constexpr (EnableDeadlockDetection)
-        return ThreadLocal::ThreadID();
+        return ThreadRegistry::ThreadID();
       else
         return LockState::LS_LOCKED;
     }
@@ -94,7 +95,7 @@ private:
       auto detect_deadlock = [&]() {
         const DeadlockSafeMutex *waiting_on = this;
 
-        waiters[ThreadLocal::ThreadID()] = waiting_on;
+        waiters[ThreadRegistry::ThreadID()] = waiting_on;
 
         while (true) {
           auto lock_holder = waiting_on->word.load().as_uncontented_word();
@@ -139,7 +140,7 @@ private:
   bool park() const {
     if constexpr (EnableDeadlockDetection) {
       using namespace std::chrono_literals;
-      static constexpr auto DEADLOCK_DETECT_TIMEOUT = 1s;
+      static auto DEADLOCK_DETECT_TIMEOUT = 1s;
 
       announce_wait();
 
@@ -147,13 +148,13 @@ private:
           this, nullptr, [&]() { return is_lock_contented(); }, []() {},
           DEADLOCK_DETECT_TIMEOUT);
 
-      if (res == ParkResult::Timeout && check_deadlock())
+      if (res == folly::ParkResult::Timeout && check_deadlock())
         return true;
 
       denounce_wait();
     } else {
-      detail::parkinglot.park(
-          this, nullptr, [&]() { return is_lock_contented(); }, []() {});
+      detail::parkinglot.park(this, nullptr,
+                              [&]() { return is_lock_contented(); }, []() {});
     }
 
     return false;
@@ -161,12 +162,12 @@ private:
 
   void announce_wait() const {
     if constexpr (EnableDeadlockDetection)
-      detail::thread_waiting_on[ThreadLocal::ThreadID()] = this;
+      detail::thread_waiting_on[ThreadRegistry::ThreadID()] = this;
   }
 
   void denounce_wait() const {
     if constexpr (EnableDeadlockDetection)
-      detail::thread_waiting_on[ThreadLocal::ThreadID()] = nullptr;
+      detail::thread_waiting_on[ThreadRegistry::ThreadID()] = nullptr;
   }
 
   bool is_lock_contented() const { return word.load().is_lock_contented(); }
@@ -235,8 +236,8 @@ public:
 
     if (old.is_lock_contented())
       detail::parkinglot.unpark(
-          this, [](auto) { return UnparkControl::RemoveBreak; });
+          this, [](auto) { return folly::UnparkControl::RemoveBreak; });
   }
 };
 
-} // namespace parking_lot::mutex
+} // namespace sync_prim::mutex

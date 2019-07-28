@@ -1,11 +1,11 @@
-#include "ThreadLocal.h"
+#include "ThreadRegistry.h"
 
 #include <atomic>
 #include <cassert>
 #include <mutex>
 #include <set>
 
-namespace parking_lot {
+namespace sync_prim {
 // Max used tid
 static std::atomic_int max_used_tid = -1;
 
@@ -19,7 +19,7 @@ static thread_local int tid = -1;
 static std::set<int> free_tids = []() {
   std::set<int> free_tids;
 
-  for (int i = 0; i < ThreadLocal::MAX_THREADS; i++)
+  for (int i = 0; i < ThreadRegistry::MAX_THREADS; i++)
     free_tids.insert(i);
 
   return free_tids;
@@ -27,7 +27,7 @@ static std::set<int> free_tids = []() {
 static std::set<int> inuse_tids;
 static std::mutex tid_gen_mutex;
 
-bool ThreadLocal::RegisterThread() {
+bool ThreadRegistry::RegisterThread() {
   if (tid != -1)
     return false;
 
@@ -49,7 +49,7 @@ bool ThreadLocal::RegisterThread() {
   return true;
 }
 
-void ThreadLocal::UnregisterThread() {
+void ThreadRegistry::UnregisterThread() {
   if (tid != -1) {
     std::lock_guard<std::mutex> lock{tid_gen_mutex};
 
@@ -63,14 +63,14 @@ void ThreadLocal::UnregisterThread() {
   }
 }
 
-int ThreadLocal::ThreadID() {
+int ThreadRegistry::ThreadID() {
   assert(tid != -1);
 
   return tid;
 }
 
-int ThreadLocal::NumRegisteredThreads() { return num_registerd_threads; }
+int ThreadRegistry::NumRegisteredThreads() { return num_registerd_threads; }
 
-int ThreadLocal::MaxThreadID() { return max_used_tid; }
+int ThreadRegistry::MaxThreadID() { return max_used_tid; }
 
-} // namespace parking_lot
+} // namespace sync_prim

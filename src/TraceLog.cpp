@@ -14,7 +14,7 @@
 #include <memory>
 #include <stdio.h>
 
-namespace parking_lot {
+namespace sync_prim {
 TraceLog TraceLog::Instance;
 
 TraceLog::TraceLog() : m_head(new Page), m_tail(m_head), m_numPages(1) {}
@@ -102,4 +102,4 @@ void TraceLog::dumpEntireLog(const char *path, unsigned startPage) {
   fclose(f);
 }
 
-} // namespace parking_lot
+} // namespace sync_prim

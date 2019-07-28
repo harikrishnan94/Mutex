@@ -1,7 +1,7 @@
 #pragma once
 
-namespace parking_lot {
-class ThreadLocal {
+namespace sync_prim {
+class ThreadRegistry {
 public:
   // Maximum # active threads supported by EpochGC.
   static constexpr int MAX_THREADS = 1 << 16;
@@ -23,4 +23,4 @@ public:
   // This is always >= NumRegisterdThreads()
   static int MaxThreadID();
 };
-} // namespace parking_lot
+} // namespace sync_prim

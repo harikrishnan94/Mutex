@@ -1,5 +1,5 @@
 #include "Mutex.h"
-#include "ThreadLocal.h"
+#include "ThreadRegistry.h"
 
 #include <iostream>
 #include <mutex>
@@ -12,7 +12,7 @@ TEST_CASE("Mutex Basic", "[Mutex]") {
   constexpr int NUMTHREADS = 4;
   constexpr int COUNT = 4000000;
 
-  using Mutex = parking_lot::mutex::Mutex;
+  using Mutex = sync_prim::mutex::Mutex;
 
   Mutex m;
   std::vector<std::thread> workers;
@@ -21,7 +21,7 @@ TEST_CASE("Mutex Basic", "[Mutex]") {
   for (int i = 0; i < NUMTHREADS; i++) {
     workers.emplace_back(
         [](Mutex &m, int &counter, int count) {
-          parking_lot::ThreadLocal::RegisterThread();
+          sync_prim::ThreadRegistry::RegisterThread();
 
           for (int i = 0; i < count; i++) {
             std::lock_guard<Mutex> lock{m};
@@ -29,7 +29,7 @@ TEST_CASE("Mutex Basic", "[Mutex]") {
             counter++;
           }
 
-          parking_lot::ThreadLocal::UnregisterThread();
+          sync_prim::ThreadRegistry::UnregisterThread();
         },
         std::ref(m), std::ref(counter), COUNT);
   }
@@ -42,7 +42,7 @@ TEST_CASE("Mutex Basic", "[Mutex]") {
 }
 
 TEST_CASE("Deadlock Detection", "[Mutex]") {
-  using Mutex = parking_lot::mutex::DeadlockSafeMutex;
+  using Mutex = sync_prim::mutex::DeadlockSafeMutex;
 
   constexpr int NUMTHREADS = 100;
 
@@ -56,14 +56,14 @@ TEST_CASE("Deadlock Detection", "[Mutex]") {
   std::atomic<bool> second_phase_continue = false;
 
   auto assert_lock_ret = [](auto ret) {
-    static parking_lot::mutex::Mutex assert_mutex;
-    std::lock_guard<parking_lot::mutex::Mutex> assert_lock{assert_mutex};
+    static sync_prim::mutex::Mutex assert_mutex;
+    std::lock_guard<sync_prim::mutex::Mutex> assert_lock{assert_mutex};
 
-    REQUIRE(ret == parking_lot::mutex::MutexLockResult::LOCKED);
+    REQUIRE(ret == sync_prim::mutex::MutexLockResult::LOCKED);
   };
 
   auto worker = [&](Mutex &m1, Mutex &m2) {
-    parking_lot::ThreadLocal::RegisterThread();
+    sync_prim::ThreadRegistry::RegisterThread();
 
     auto ret = m1.lock();
 
@@ -75,17 +75,17 @@ TEST_CASE("Deadlock Detection", "[Mutex]") {
 
     ret = m2.lock();
 
-    if (ret != parking_lot::mutex::MutexLockResult::DEADLOCKED)
+    if (ret != sync_prim::mutex::MutexLockResult::DEADLOCKED)
       m2.unlock();
 
     m1.unlock();
 
-    if (ret == parking_lot::mutex::MutexLockResult::DEADLOCKED)
+    if (ret == sync_prim::mutex::MutexLockResult::DEADLOCKED)
       deadlock_count++;
     else
       success_count++;
 
-    parking_lot::ThreadLocal::UnregisterThread();
+    sync_prim::ThreadRegistry::UnregisterThread();
   };
 
   for (int i = 0; i < NUMTHREADS; i++) {

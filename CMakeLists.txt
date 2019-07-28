@@ -12,7 +12,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(PROJECT_NAME parkinglot)
+set(PROJECT_NAME sync_primitives)
 
 project(${PROJECT_NAME} C CXX)
 set(PROJECT_PATH ${CMAKE_CURRENT_SOURCE_DIR})
@@ -44,9 +44,14 @@ find_package(Threads)
 find_package(Boost REQUIRED COMPONENTS system thread program_options)
 find_package(benchmark CONFIG REQUIRED)
 find_path(VCPKG_INCLUDE_DIR NAMES gsl catch.hpp)
+find_package(folly CONFIG REQUIRED)
 
 include_directories(AFTER ${VCPKG_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
-link_libraries(${Boost_LIBRARIES})
+link_libraries(${Boost_LIBRARIES}
+               Folly::folly
+               Folly::folly_deps
+               Folly::follybenchmark
+               Folly::folly_test_util)
 
 if(NOT MSVC)
     add_compile_options("-Wall" "-pedantic")

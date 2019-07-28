@@ -1,4 +1,4 @@
-#include "ParkingLot.h"
+#include <folly/synchronization/ParkingLot.h>
 
 #include <iostream>
 #include <thread>
@@ -7,8 +7,8 @@
 
 enum ProdConsFlag { PRODUCED, CONSUMED };
 
-template <typename Data> using ParkingLot = parking_lot::ParkingLot<Data>;
-using UnparkControl = parking_lot::UnparkControl;
+template <typename Data> using ParkingLot = folly::ParkingLot<Data>;
+using UnparkControl = folly::UnparkControl;
 
 TEST_CASE("ParkingLot", "Futex - 2 Thread") {
   ParkingLot<std::nullptr_t> parkinglot;
@@ -17,9 +17,9 @@ TEST_CASE("ParkingLot", "Futex - 2 Thread") {
   std::atomic_bool quit = false;
   auto t = std::thread{[&flag, &quit, &parkinglot] {
     while (!quit) {
-      parkinglot.park(
-          &flag, nullptr,
-          [&quit, &flag]() { return !quit && flag == CONSUMED; }, []() {});
+      parkinglot.park(&flag, nullptr,
+                      [&quit, &flag]() { return !quit && flag == CONSUMED; },
+                      []() {});
 
       if (!quit)
         REQUIRE(flag == PRODUCED);
@@ -30,8 +30,8 @@ TEST_CASE("ParkingLot", "Futex - 2 Thread") {
   }};
 
   for (int i = 0; i < 100000; i++) {
-    parkinglot.park(
-        &flag, nullptr, [&flag]() { return flag == PRODUCED; }, []() {});
+    parkinglot.park(&flag, nullptr, [&flag]() { return flag == PRODUCED; },
+                    []() {});
 
     REQUIRE(flag == CONSUMED);
 
