@@ -18,15 +18,18 @@ private:
                 sync_prim::ThreadRegistry::MAX_THREADS)
           : nullptr;
 
+  using thread_id_t = ThreadRegistry::thread_id_t;
+
   class LockWord {
     enum class LockState : int8_t { LS_UNLOCKED, LS_LOCKED, LS_CONTENTED };
 
-    static constexpr int M_CONTENDED_MASK = 1 << (sizeof(int) * CHAR_BIT - 1);
-    static constexpr int M_UNLOCKED = -1 & ~M_CONTENDED_MASK;
+    static constexpr thread_id_t M_CONTENDED_MASK =
+        1 << (sizeof(thread_id_t) * CHAR_BIT - 1);
+    static constexpr thread_id_t M_UNLOCKED = -1 & ~M_CONTENDED_MASK;
 
   public:
     using WordType =
-        std::conditional_t<EnableDeadlockDetection, int, LockState>;
+        std::conditional_t<EnableDeadlockDetection, thread_id_t, LockState>;
 
   private:
     LockWord(WordType a_word) : word(a_word) {}
@@ -78,7 +81,7 @@ private:
 
   bool check_deadlock() const {
     if constexpr (EnableDeadlockDetection) {
-      std::unordered_map<int, const DeadlockSafeMutex *> waiters;
+      std::unordered_map<thread_id_t, const DeadlockSafeMutex *> waiters;
 
       auto detect_deadlock = [&]() {
         const DeadlockSafeMutex *waiting_on = this;

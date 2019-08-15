@@ -7,24 +7,24 @@
 
 namespace sync_prim {
 // Max used tid
-static std::atomic<int> max_used_tid = -1;
+static std::atomic<ThreadRegistry::thread_id_t> max_used_tid = -1;
 
 // # Registered threads at any moment
-static std::atomic<int> num_registerd_threads = 0;
+static std::atomic<std::uint32_t> num_registerd_threads = 0;
 
 // ID of calling thread,
-static thread_local int tid = -1;
+static thread_local ThreadRegistry::thread_id_t tid = -1;
 
 // Sorted Freelist and used list of tids
-static std::set<int> free_tids = []() {
-  std::set<int> free_tids;
+static std::set<ThreadRegistry::thread_id_t> free_tids = []() {
+  std::set<ThreadRegistry::thread_id_t> free_tids;
 
-  for (int i = 0; i < ThreadRegistry::MAX_THREADS; i++)
+  for (ThreadRegistry::thread_id_t i = 0; i < ThreadRegistry::MAX_THREADS; i++)
     free_tids.insert(i);
 
   return free_tids;
 }();
-static std::set<int> inuse_tids;
+static std::set<ThreadRegistry::thread_id_t> inuse_tids;
 static std::mutex tid_gen_mutex;
 
 bool ThreadRegistry::RegisterThread() {
@@ -63,14 +63,18 @@ void ThreadRegistry::UnregisterThread() {
   }
 }
 
-int ThreadRegistry::ThreadID() {
+ThreadRegistry::thread_id_t ThreadRegistry::ThreadID() {
   assert(tid != -1);
 
   return tid;
 }
 
-int ThreadRegistry::NumRegisteredThreads() { return num_registerd_threads; }
+std::uint32_t ThreadRegistry::NumRegisteredThreads() {
+  return num_registerd_threads;
+}
 
-int ThreadRegistry::MaxThreadID() { return max_used_tid; }
+ThreadRegistry::thread_id_t ThreadRegistry::MaxThreadID() {
+  return max_used_tid;
+}
 
 } // namespace sync_prim

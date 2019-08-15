@@ -10,7 +10,9 @@ using FairDeadlockSafeMutex = FairMutexImpl<true>;
 
 template <bool EnableDeadlockDetection> class FairMutexImpl {
 private:
-  static inline auto parkinglot = folly::ParkingLot<int>{};
+  using thread_id_t = ThreadRegistry::thread_id_t;
+
+  static inline auto parkinglot = folly::ParkingLot<thread_id_t>{};
   static inline auto dead_lock_verify_mutex = std::mutex{};
   static inline auto thread_waiting_on =
       EnableDeadlockDetection
@@ -20,7 +22,7 @@ private:
 
   class LockWord {
   public:
-    int holder;
+    thread_id_t holder;
     std::uint32_t num_waiters;
 
   private:
@@ -38,7 +40,9 @@ private:
 
     bool has_waiters() const { return num_waiters != 0; }
 
-    LockWord transfer_lock(int tid) const { return {tid, num_waiters - 1}; }
+    LockWord transfer_lock(thread_id_t tid) const {
+      return {tid, num_waiters - 1};
+    }
 
     LockWord increment_num_waiters() const { return {holder, num_waiters + 1}; }
     LockWord decrement_num_waiters() const { return {holder, num_waiters - 1}; }
@@ -71,7 +75,7 @@ private:
     }
   }
 
-  void transfer_lock(int tid) {
+  void transfer_lock(thread_id_t tid) {
     while (true) {
       auto old = word.load();
 
@@ -152,7 +156,7 @@ public:
       auto old = word.load();
 
       if (old.has_waiters()) {
-        parkinglot.unpark(this, [this](int tid) {
+        parkinglot.unpark(this, [this](thread_id_t tid) {
           transfer_lock(tid);
           return folly::UnparkControl::RemoveBreak;
         });
