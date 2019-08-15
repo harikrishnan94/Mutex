@@ -127,9 +127,18 @@ public:
   static TraceLog Instance;
 };
 
-} // namespace sync_prim
+template <typename Param1, typename Param2>
+static inline void TRACELOG(const char *fmt, Param1 p1, Param2 p2) {
+  TraceLog::Instance.log(fmt, (uintptr_t)p1, (uintptr_t)p2);
+}
 
-#define TRACELOG(fmt, param1, param2)                                          \
-  TraceLog::Instance.log(fmt, reinterpret_cast<uintptr_t>(param1),             \
-                         reinterpret_cast<uintptr_t>(param2))
-#define TRACELOG1(fmt, param1) TRACELOG(fmt, param1, 0UL)
+template <typename Param1>
+static inline void TRACELOG(const char *fmt, Param1 p1) {
+  TraceLog::Instance.log(fmt, (uintptr_t)p1, 0);
+}
+
+static inline void TRACELOG(const char *fmt) {
+  TraceLog::Instance.log(fmt, 0, 0);
+}
+
+} // namespace sync_prim
