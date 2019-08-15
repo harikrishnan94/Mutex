@@ -12,6 +12,9 @@ template <bool EnableDeadlockDetection> class FairMutexImpl {
 private:
   using thread_id_t = ThreadRegistry::thread_id_t;
 
+  static_assert(!EnableDeadlockDetection,
+                "Deadlock Detection is not supported");
+
   static inline auto parkinglot = folly::ParkingLot<thread_id_t>{};
   static inline auto dead_lock_verify_mutex = std::mutex{};
   static inline auto thread_waiting_on =
