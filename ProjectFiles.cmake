@@ -2,7 +2,7 @@
 # LICENSE.md or copy at http://opensource.org/licenses/MIT
 
 # Set project source files.
-set(SRC "${SRC_PATH}/ThreadRegistry.cpp" "${SRC_PATH}/TraceLog.cpp" "${SRC_PATH}/Mutex.cpp")
+set(SRC "${SRC_PATH}/ThreadRegistry.cpp" "${SRC_PATH}/TraceLog.cpp")
 
 set(BENCH_SRC_PATH "${SRC_PATH}/benchmark")
 set(BENCH_SRC "${BENCH_SRC_PATH}/benchMutex.cpp")

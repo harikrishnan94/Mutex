@@ -1,5 +1,5 @@
-#include "sync_prim/Mutex.h"
 #include "sync_prim/ThreadRegistry.h"
+#include "sync_prim/mutex/Mutex.h"
 
 #include <iostream>
 #include <mutex>

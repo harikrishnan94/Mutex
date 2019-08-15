@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "sync_prim/Mutex.h"
 #include "sync_prim/ThreadRegistry.h"
+#include "sync_prim/mutex/Mutex.h"
 
 #include <chrono>
 #include <cstdint>
