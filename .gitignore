@@ -45,6 +45,8 @@ CTestTestfile.cmake
 
 build/*
 build-*/*
+.ccls
+compile_flags.txt
 
 # Archives
 **/*.zip
