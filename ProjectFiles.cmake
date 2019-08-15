@@ -13,6 +13,5 @@ set(BENCH2_SRC "${BENCH_SRC_PATH}/benchMutex2.cpp")
 # Set project test source files.
 set(TEST_SRC
     "${TEST_SRC_PATH}/testBase.cpp"
-    "${TEST_SRC_PATH}/testParkingLot.cpp"
     "${TEST_SRC_PATH}/testMutex.cpp"
     "${TEST_SRC_PATH}/testFairMutex.cpp")
