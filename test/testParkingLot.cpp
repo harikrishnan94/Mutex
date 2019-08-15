@@ -3,14 +3,16 @@
 #include <iostream>
 #include <thread>
 
-#include "catch.hpp"
+#include "doctest/doctest.h"
+
+TEST_SUITE_BEGIN("ParkingLot");
 
 enum ProdConsFlag { PRODUCED, CONSUMED };
 
 template <typename Data> using ParkingLot = folly::ParkingLot<Data>;
 using UnparkControl = folly::UnparkControl;
 
-TEST_CASE("ParkingLot", "Futex - 2 Thread") {
+TEST_CASE("Futex - 2 Thread") {
   ParkingLot<std::nullptr_t> parkinglot;
   std::atomic<ProdConsFlag> flag = PRODUCED;
 
@@ -44,3 +46,5 @@ TEST_CASE("ParkingLot", "Futex - 2 Thread") {
 
   t.join();
 }
+
+TEST_SUITE_END();

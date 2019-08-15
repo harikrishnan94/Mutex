@@ -4,7 +4,7 @@
 #include <thread>
 #include <vector>
 
-#include "catch.hpp"
+#include "doctest/doctest.h"
 
 template <typename Mutex>
 void MutexBasicTest(int num_threads = 4, int count = 4000000) {
@@ -46,19 +46,12 @@ void MutexDeadlockDetectionTest(int num_threads = 100) {
   std::atomic<int> first_phase_progress = 0;
   std::atomic<bool> second_phase_continue = false;
 
-  auto assert_lock_ret = [](auto ret) {
-    static DeadlockSafeMutex assert_mutex;
-    std::lock_guard<DeadlockSafeMutex> assert_lock{assert_mutex};
-
-    REQUIRE(ret == sync_prim::mutex::MutexLockResult::LOCKED);
-  };
-
   auto worker = [&](DeadlockSafeMutex &m1, DeadlockSafeMutex &m2) {
     sync_prim::ThreadRegistry::RegisterThread();
 
     auto ret = m1.lock();
 
-    assert_lock_ret(ret);
+    REQUIRE(ret == sync_prim::mutex::MutexLockResult::LOCKED);
     first_phase_progress++;
 
     while (!second_phase_continue)

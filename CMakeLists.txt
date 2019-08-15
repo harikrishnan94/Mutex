@@ -43,9 +43,9 @@ include_directories(AFTER "include")
 find_package(Threads)
 find_package(Boost REQUIRED COMPONENTS system thread program_options)
 find_package(benchmark CONFIG REQUIRED)
-find_path(VCPKG_INCLUDE_DIR NAMES gsl catch.hpp)
 find_package(folly CONFIG REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(doctest CONFIG REQUIRED)
 
 include_directories(AFTER ${VCPKG_INCLUDE_DIR} ${Boost_INCLUDE_DIRS})
 link_libraries(${Boost_LIBRARIES}
@@ -73,7 +73,7 @@ target_link_libraries(${BENCH2}
                               benchmark::benchmark_main)
 
 add_executable(${TEST} ${TEST_SRC})
-target_link_libraries(${TEST} PRIVATE ${LIB} ${CMAKE_THREAD_LIBS_INIT})
+target_link_libraries(${TEST} PRIVATE ${LIB} ${CMAKE_THREAD_LIBS_INIT} doctest::doctest)
 
 enable_testing()
 add_test(NAME ${TEST} COMMAND ${TEST})
