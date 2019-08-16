@@ -93,8 +93,9 @@ private:
 
   int park() {
     if (increment_num_waiters()) {
-      switch (parkinglot.park(this, ThreadRegistry::ThreadID(),
-                              [&]() { return !is_locked_by_me(); }, []() {})) {
+      switch (parkinglot.park(
+          this, ThreadRegistry::ThreadID(),
+          [&]() { return !is_locked_by_me(); }, []() {})) {
       case folly::ParkResult::Skip:
         decrement_num_waiters();
         return PARKRES_LOCKED;

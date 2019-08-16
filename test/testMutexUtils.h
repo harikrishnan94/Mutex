@@ -1,4 +1,5 @@
 #include "sync_prim/ThreadRegistry.h"
+#include "sync_prim/mutex/common.h"
 
 #include <mutex>
 #include <thread>

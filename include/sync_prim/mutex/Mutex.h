@@ -135,17 +135,17 @@ private:
 
       announce_wait();
 
-      auto res = parkinglot.park_for(this, nullptr,
-                                     [&]() { return is_lock_contented(); },
-                                     []() {}, DEADLOCK_DETECT_TIMEOUT);
+      auto res = parkinglot.park_for(
+          this, nullptr, [&]() { return is_lock_contented(); }, []() {},
+          DEADLOCK_DETECT_TIMEOUT);
 
       if (res == folly::ParkResult::Timeout && check_deadlock())
         return true;
 
       denounce_wait();
     } else {
-      parkinglot.park(this, nullptr, [&]() { return is_lock_contented(); },
-                      []() {});
+      parkinglot.park(
+          this, nullptr, [&]() { return is_lock_contented(); }, []() {});
     }
 
     return false;
