@@ -168,9 +168,9 @@ public:
         if (word.compare_exchange_strong(old, LockWord::get_unlocked_word()))
           break;
       }
-    }
 
-    _mm_pause();
+      _mm_pause();
+    }
   }
 };
 
