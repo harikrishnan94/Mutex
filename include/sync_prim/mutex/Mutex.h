@@ -2,7 +2,8 @@
 
 #include "common.h"
 
-namespace sync_prim::mutex {
+namespace sync_prim {
+namespace mutex {
 template <bool EnableDeadlockDetection> class MutexImpl;
 
 using Mutex = MutexImpl<false>;
@@ -135,17 +136,17 @@ private:
 
       announce_wait();
 
-      auto res = parkinglot.park_for(this, nullptr,
-                                     [&]() { return is_lock_contented(); },
-                                     []() {}, DEADLOCK_DETECT_TIMEOUT);
+      auto res = parkinglot.park_for(
+          this, nullptr, [&]() { return is_lock_contented(); }, []() {},
+          DEADLOCK_DETECT_TIMEOUT);
 
       if (res == folly::ParkResult::Timeout && check_deadlock())
         return true;
 
       denounce_wait();
     } else {
-      parkinglot.park(this, nullptr, [&]() { return is_lock_contented(); },
-                      []() {});
+      parkinglot.park(
+          this, nullptr, [&]() { return is_lock_contented(); }, []() {});
     }
 
     return false;
@@ -230,5 +231,5 @@ public:
                         [](auto) { return folly::UnparkControl::RemoveBreak; });
   }
 };
-
-} // namespace sync_prim::mutex
+} // namespace mutex
+} // namespace sync_prim

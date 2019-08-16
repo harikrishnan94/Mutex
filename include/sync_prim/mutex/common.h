@@ -11,6 +11,8 @@
 
 #include <folly/synchronization/ParkingLot.h>
 
-namespace sync_prim::mutex {
+namespace sync_prim {
+namespace mutex {
 enum class MutexLockResult { LOCKED, DEADLOCKED };
-}
+} // namespace mutex
+} // namespace sync_prim
