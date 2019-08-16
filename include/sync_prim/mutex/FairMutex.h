@@ -2,7 +2,8 @@
 
 #include "common.h"
 
-namespace sync_prim::mutex {
+namespace sync_prim {
+namespace mutex {
 template <bool EnableDeadlockDetection> class FairMutexImpl;
 
 using FairMutex = FairMutexImpl<false>;
@@ -23,7 +24,7 @@ private:
                 sync_prim::ThreadRegistry::MAX_THREADS)
           : nullptr;
 
-  class LockWord {
+  class alignas(std::uint64_t) LockWord {
   public:
     thread_id_t holder;
     std::uint32_t num_waiters;
@@ -175,4 +176,5 @@ public:
   }
 };
 
-} // namespace sync_prim::mutex
+} // namespace mutex
+} // namespace sync_prim

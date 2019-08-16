@@ -2,7 +2,8 @@
 
 #include "common.h"
 
-namespace sync_prim::mutex {
+namespace sync_prim {
+namespace mutex {
 template <bool EnableDeadlockDetection> class MutexImpl;
 
 using Mutex = MutexImpl<false>;
@@ -230,5 +231,5 @@ public:
                         [](auto) { return folly::UnparkControl::RemoveBreak; });
   }
 };
-
-} // namespace sync_prim::mutex
+} // namespace mutex
+} // namespace sync_prim
