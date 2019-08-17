@@ -1,11 +1,17 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 
 namespace sync_prim {
 class ThreadRegistry {
 public:
   using thread_id_t = std::uint32_t;
+
+  // Invalid ThreadID
+  static constexpr thread_id_t INVALID_THREADID =
+      std::numeric_limits<thread_id_t>::max();
+
   // Maximum # active threads present in the system
   static constexpr std::uint32_t MAX_THREADS = 1 << 16;
 

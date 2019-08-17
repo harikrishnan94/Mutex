@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include <climits>
 
 namespace sync_prim {
 namespace mutex {
@@ -26,7 +27,8 @@ private:
 
     static constexpr thread_id_t M_CONTENDED_MASK =
         1 << (sizeof(thread_id_t) * CHAR_BIT - 1);
-    static constexpr thread_id_t M_UNLOCKED = -1 & ~M_CONTENDED_MASK;
+    static constexpr thread_id_t M_UNLOCKED =
+        ThreadRegistry::INVALID_THREADID & ~M_CONTENDED_MASK;
 
   public:
     using WordType =
