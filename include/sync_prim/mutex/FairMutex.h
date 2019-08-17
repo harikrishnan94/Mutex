@@ -122,22 +122,32 @@ private:
   int park() {
     auto park = [this]() -> std::pair<folly::ParkResult, bool> {
       bool is_dead_locked = false;
-      auto &my_deadlock_detect_data =
-          global_wait_info[ThreadRegistry::ThreadID()];
-      std::uint64_t wait_token = my_deadlock_detect_data.announce_wait(this);
-      WaitNodeData waitdata{ThreadRegistry::ThreadID(), wait_token,
-                            &is_dead_locked};
 
-      auto res = parkinglot.park(
-          this, waitdata,
-          [&]() { return !is_locked_by_me() && !is_dead_locked; }, []() {});
+      if constexpr (EnableDeadlockDetection) {
+        auto &my_deadlock_detect_data =
+            global_wait_info[ThreadRegistry::ThreadID()];
+        std::uint64_t wait_token = my_deadlock_detect_data.announce_wait(this);
+        WaitNodeData waitdata{ThreadRegistry::ThreadID(), wait_token,
+                              &is_dead_locked};
 
-      my_deadlock_detect_data.denounce_wait();
+        auto res = parkinglot.park(
+            this, waitdata,
+            [&]() { return !is_locked_by_me() && !is_dead_locked; }, []() {});
 
-      if (is_dead_locked)
-        decrement_num_waiters();
+        my_deadlock_detect_data.denounce_wait();
 
-      return {res, is_dead_locked};
+        if (is_dead_locked)
+          decrement_num_waiters();
+
+        return {res, is_dead_locked};
+      } else {
+        WaitNodeData waitdata{ThreadRegistry::ThreadID(), 0, nullptr};
+
+        auto res = parkinglot.park(
+            this, waitdata, [&]() { return !is_locked_by_me(); }, []() {});
+
+        return {res, false};
+      }
     };
 
     if (increment_num_waiters()) {
