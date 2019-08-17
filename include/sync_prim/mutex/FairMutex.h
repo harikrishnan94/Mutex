@@ -243,6 +243,19 @@ private:
             typename = typename std::enable_if_t<DEADLOCK_SAFE, Dummy>>
   class DeadlockDetector {
   public:
+    // 1) Gather snapshot of all waiters and their associated lock
+    // information (who's holding the lock).
+    //
+    // 2) Obtain a lockcycle (unconfirmed-deadlock cycle) if any.
+    //    If a lockcycle couldn't be found, it means no deadlock is present.
+    //
+    // 3) Verify the cycle by checking if all the waiters are still waiting for
+    //    the same lock.
+    //
+    // 4) Finally, break deadlock by unparking a waiter in the lockcycle, after
+    //    verifying, that the waiter wasn't awakened after the verification step
+    //    above (confirmation is by checking the wait token, obtained as part of
+    //    step 1)
     bool run() {
       gather_waiters_and_holders_info();
 
@@ -340,6 +353,7 @@ private:
           latest_waiter = waiter.first;
         }
 
+        // Verify if still waiting for the same lock.
         if (waiter.second != lock)
           return ThreadRegistry::INVALID_THREADID;
       }
