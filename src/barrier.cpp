@@ -25,7 +25,7 @@ private:
     if (m_is_completion_phase_in_progress)
       complete_phase(lock);
 
-    assert(m_total != 0);
+    assert(m_total > 0);
 
     m_remaining--;
 
