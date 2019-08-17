@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "sync_prim/ThreadRegistry.h"
+#include "sync_prim/mutex/FairMutex.h"
 #include "sync_prim/mutex/Mutex.h"
 
 #include <chrono>
@@ -23,15 +24,23 @@
 
 #include <benchmark/benchmark.h>
 
-void BM_Mutex(benchmark::State &state) {
-  static sync_prim::mutex::Mutex mu;
+template <typename MutexType> void BM_Mutex(benchmark::State &state) {
+  static MutexType mu;
 
   for (auto _ : state) {
-    std::lock_guard<sync_prim::mutex::Mutex> lock(mu);
+    std::lock_guard<MutexType> lock(mu);
   }
 }
 
-BENCHMARK(BM_Mutex)->UseRealTime()->Threads(1)->ThreadPerCpu();
+BENCHMARK_TEMPLATE(BM_Mutex, sync_prim::mutex::Mutex)
+    ->UseRealTime()
+    ->Threads(1)
+    ->ThreadPerCpu();
+
+BENCHMARK_TEMPLATE(BM_Mutex, sync_prim::mutex::FairMutex)
+    ->UseRealTime()
+    ->Threads(1)
+    ->ThreadPerCpu();
 
 static void DelayNs(int64_t ns, uint64_t &data) {
   if (ns) {
@@ -71,6 +80,31 @@ template <typename MutexType> void BM_Contended(benchmark::State &state) {
 }
 
 BENCHMARK_TEMPLATE(BM_Contended, sync_prim::mutex::Mutex)
+    ->UseRealTime()
+    // ThreadPerCpu poorly handles non-power-of-two CPU counts.
+    ->Threads(1)
+    ->Threads(2)
+    ->Threads(4)
+    ->Threads(6)
+    ->Threads(8)
+    ->Threads(12)
+    ->Threads(16)
+    ->Threads(24)
+    ->Threads(32)
+    ->Threads(48)
+    ->Threads(64)
+    ->Threads(96)
+    ->Threads(128)
+    ->Threads(192)
+    ->Threads(256)
+    // Some empirically chosen amounts of work in critical section.
+    // 1 is low contention, 200 is high contention and few values in between.
+    ->Arg(1)
+    ->Arg(20)
+    ->Arg(50)
+    ->Arg(200);
+
+BENCHMARK_TEMPLATE(BM_Contended, sync_prim::mutex::FairMutex)
     ->UseRealTime()
     // ThreadPerCpu poorly handles non-power-of-two CPU counts.
     ->Threads(1)
