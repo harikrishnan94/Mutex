@@ -1,4 +1,5 @@
 #include "sync_prim/ThreadRegistry.h"
+#include "sync_prim/barrier.h"
 #include "sync_prim/mutex/common.h"
 
 #include <mutex>
@@ -43,9 +44,7 @@ void MutexDeadlockDetectionTest(int num_threads = 100) {
   std::atomic<int> deadlock_count = 0;
   std::atomic<int> success_count = 0;
 
-  // A juvenile thread barrier...
-  std::atomic<int> first_phase_progress = 0;
-  std::atomic<bool> second_phase_continue = false;
+  sync_prim::barrier lock_phase{num_threads};
 
   auto worker = [&](DeadlockSafeMutex &m1, DeadlockSafeMutex &m2) {
     sync_prim::ThreadRegistry::RegisterThread();
@@ -53,10 +52,8 @@ void MutexDeadlockDetectionTest(int num_threads = 100) {
     auto ret = m1.lock();
 
     REQUIRE(ret == sync_prim::mutex::MutexLockResult::LOCKED);
-    first_phase_progress++;
 
-    while (!second_phase_continue)
-      ;
+    lock_phase.arrive_and_wait();
 
     ret = m2.lock();
 
@@ -77,13 +74,6 @@ void MutexDeadlockDetectionTest(int num_threads = 100) {
     workers.emplace_back(worker, std::ref(mutexes[i]),
                          std::ref(mutexes[(i + 1) % num_threads]));
   }
-
-  // Wait till all threads finish acquiring their first lock.
-  while (first_phase_progress != num_threads)
-    ;
-
-  // Now, release threads to let them acquire their second lock.
-  second_phase_continue = true;
 
   for (auto &worker : workers) {
     worker.join();
