@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+
 #include <climits>
 
 namespace sync_prim {
@@ -14,11 +15,10 @@ template <bool EnableDeadlockDetection> class MutexImpl {
 private:
   static inline auto parkinglot = folly::ParkingLot<std::nullptr_t>{};
   static inline auto dead_lock_verify_mutex = std::mutex{};
+  static constexpr int WAIT_INFO_SIZE =
+      EnableDeadlockDetection ? ThreadRegistry::MAX_THREADS : 0;
   static inline auto thread_waiting_on =
-      EnableDeadlockDetection
-          ? std::make_unique<std::atomic<const MutexImpl *>[]>(
-                sync_prim::ThreadRegistry::MAX_THREADS)
-          : nullptr;
+      std::array<std::atomic<const MutexImpl *>, WAIT_INFO_SIZE>();
 
   using thread_id_t = ThreadRegistry::thread_id_t;
 

@@ -2,6 +2,7 @@
 
 #include "sync_prim/ThreadRegistry.h"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
