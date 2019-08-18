@@ -13,11 +13,14 @@ void MutexBasicTest(int num_threads = 4, int count = 4000000) {
   Mutex m;
   std::vector<std::thread> workers;
   int counter = 0;
+  sync_prim::barrier start_test{num_threads};
 
   for (int i = 0; i < num_threads; i++) {
     workers.emplace_back(
-        [](Mutex &m, int &counter, int count) {
+        [&start_test](Mutex &m, int &counter, int count) {
           sync_prim::ThreadRegistry::RegisterThread();
+
+          start_test.arrive_and_wait();
 
           for (int i = 0; i < count; i++) {
             std::lock_guard<Mutex> lock{m};
