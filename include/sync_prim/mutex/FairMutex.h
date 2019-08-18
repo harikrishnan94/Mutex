@@ -131,8 +131,7 @@ private:
                               &is_dead_locked};
 
         auto res = parkinglot.park(
-            this, waitdata,
-            [&]() { return !is_locked_by_me() && !is_dead_locked; }, []() {});
+            this, waitdata, [&]() { return is_locked(); }, []() {});
 
         my_deadlock_detect_data.denounce_wait();
 
@@ -144,7 +143,7 @@ private:
         WaitNodeData waitdata{ThreadRegistry::ThreadID(), 0, nullptr};
 
         auto res = parkinglot.park(
-            this, waitdata, [&]() { return !is_locked_by_me(); }, []() {});
+            this, waitdata, [&]() { return is_locked(); }, []() {});
 
         return {res, false};
       }
@@ -154,7 +153,7 @@ private:
       switch (auto res = park(); res.first) {
       case folly::ParkResult::Skip:
         decrement_num_waiters();
-        return PARKRES_LOCKED;
+        return PARKRES_RETRY;
 
       case folly::ParkResult::Unpark:
         return res.second ? PARKRES_DEADLOCKED : PARKRES_LOCKED;
@@ -219,7 +218,6 @@ public:
         bool wokeup_somebody = false;
         parkinglot.unpark(this,
                           [this, &wokeup_somebody](WaitNodeData waitdata) {
-                            assert(!*waitdata.is_dead_locked);
                             wokeup_somebody = true;
                             transfer_lock(waitdata.tid);
                             return folly::UnparkControl::RemoveBreak;
