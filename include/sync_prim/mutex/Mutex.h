@@ -13,7 +13,7 @@ using DeadlockSafeMutex = MutexImpl<true>;
 
 template <bool EnableDeadlockDetection> class MutexImpl {
 private:
-  static inline auto parkinglot = folly::ParkingLot<std::nullptr_t>{};
+  static inline auto parkinglot = ParkingLot<std::nullptr_t>{};
   static inline auto dead_lock_verify_mutex = std::mutex{};
   static constexpr int WAIT_INFO_SIZE =
       EnableDeadlockDetection ? ThreadRegistry::MAX_THREADS : 0;
@@ -142,7 +142,7 @@ private:
           this, nullptr, [&]() { return is_lock_contented(); }, []() {},
           DEADLOCK_DETECT_TIMEOUT);
 
-      if (res == folly::ParkResult::Timeout && check_deadlock())
+      if (res == ParkResult::Timeout && check_deadlock())
         return true;
 
       denounce_wait();
@@ -229,8 +229,7 @@ public:
     auto old = word.exchange(LockWord::get_unlocked_word());
 
     if (old.is_lock_contented())
-      parkinglot.unpark(this,
-                        [](auto) { return folly::UnparkControl::RemoveBreak; });
+      parkinglot.unpark(this, [](auto) { return UnparkControl::RemoveBreak; });
   }
 };
 } // namespace mutex

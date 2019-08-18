@@ -45,7 +45,7 @@ private:
     }
   };
 
-  static inline auto parkinglot = folly::ParkingLot<WaitNodeData>{};
+  static inline auto parkinglot = sync_prim::ParkingLot<WaitNodeData>{};
   static constexpr int WAIT_INFO_SIZE =
       EnableDeadlockDetection ? ThreadRegistry::MAX_THREADS : 0;
   static inline auto global_wait_info =
@@ -120,7 +120,7 @@ private:
   enum { PARKRES_RETRY, PARKRES_LOCKED, PARKRES_DEADLOCKED };
 
   int park() {
-    auto park = [this]() -> std::pair<folly::ParkResult, bool> {
+    auto park = [this]() -> std::pair<ParkResult, bool> {
       bool is_dead_locked = false;
 
       if constexpr (EnableDeadlockDetection) {
@@ -151,11 +151,11 @@ private:
 
     if (increment_num_waiters()) {
       switch (auto res = park(); res.first) {
-      case folly::ParkResult::Skip:
+      case ParkResult::Skip:
         decrement_num_waiters();
         return PARKRES_RETRY;
 
-      case folly::ParkResult::Unpark:
+      case ParkResult::Unpark:
         return res.second ? PARKRES_DEADLOCKED : PARKRES_LOCKED;
 
       default:
@@ -220,7 +220,7 @@ public:
                           [this, &wokeup_somebody](WaitNodeData waitdata) {
                             wokeup_somebody = true;
                             transfer_lock(waitdata.tid);
-                            return folly::UnparkControl::RemoveBreak;
+                            return UnparkControl::RemoveBreak;
                           });
 
         if (wokeup_somebody)
@@ -308,10 +308,10 @@ private:
                 holders[lock] = lock_word.holder;
               }
 
-              return folly::UnparkControl::RetainBreak;
+              return UnparkControl::RetainBreak;
             }
 
-            return folly::UnparkControl::RetainContinue;
+            return UnparkControl::RetainContinue;
           });
         }
 
@@ -385,10 +385,10 @@ private:
           assert(!*waitdata.is_dead_locked);
           *waitdata.is_dead_locked = true;
           unparked = true;
-          return folly::UnparkControl::RemoveBreak;
+          return UnparkControl::RemoveBreak;
         }
 
-        return folly::UnparkControl::RetainContinue;
+        return UnparkControl::RetainContinue;
       });
 
       return unparked;
