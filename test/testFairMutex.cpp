@@ -21,7 +21,7 @@ TEST_CASE("FairMutex Deadlock Detection") {
     }
   });
 
-  MutexDeadlockDetectionTest<sync_prim::mutex::FairDeadlockSafeMutex>(100);
+  MutexDeadlockDetectionTest<sync_prim::mutex::FairDeadlockSafeMutex>();
   quit = true;
   deadlock_detection_worker.join();
 }

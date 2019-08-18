@@ -60,8 +60,7 @@ private:
     static constexpr auto INVALID_HOLDER = ThreadRegistry::MAX_THREADS;
 
   public:
-    static LockWord get_unlocked_word() { return {INVALID_HOLDER, 0}; }
-    static LockWord get_lock_word() { return {ThreadRegistry::ThreadID(), 0}; }
+    static LockWord get_init_word() { return {INVALID_HOLDER, 0}; }
 
     bool is_locked() const { return holder != INVALID_HOLDER; }
 
@@ -71,6 +70,12 @@ private:
 
     bool has_waiters() const { return num_waiters != 0; }
 
+    LockWord get_lock_word() {
+      return {ThreadRegistry::ThreadID(), num_waiters};
+    }
+
+    LockWord get_unlocked_word() { return {INVALID_HOLDER, num_waiters}; }
+
     LockWord transfer_lock(thread_id_t tid) const {
       return {tid, num_waiters - 1};
     }
@@ -79,7 +84,7 @@ private:
     LockWord decrement_num_waiters() const { return {holder, num_waiters - 1}; }
   };
 
-  std::atomic<LockWord> word{LockWord::get_unlocked_word()};
+  std::atomic<LockWord> word{LockWord::get_init_word()};
 
   bool increment_num_waiters() {
     while (true) {
@@ -95,12 +100,12 @@ private:
     }
   }
 
-  bool decrement_num_waiters() {
+  void decrement_num_waiters() {
     while (true) {
       auto old = word.load();
 
       if (word.compare_exchange_strong(old, old.decrement_num_waiters()))
-        return true;
+        return;
 
       _mm_pause();
     }
@@ -131,7 +136,7 @@ private:
                               &is_dead_locked};
 
         auto res = parkinglot.park(
-            this, waitdata, [&]() { return is_locked(); }, []() {});
+            this, waitdata, [&]() { return should_wait(); }, []() {});
 
         my_deadlock_detect_data.denounce_wait();
 
@@ -143,7 +148,7 @@ private:
         WaitNodeData waitdata{ThreadRegistry::ThreadID(), 0, nullptr};
 
         auto res = parkinglot.park(
-            this, waitdata, [&]() { return is_locked(); }, []() {});
+            this, waitdata, [&]() { return should_wait(); }, []() {});
 
         return {res, false};
       }
@@ -168,6 +173,11 @@ private:
 
   bool is_locked_by_me() const { return word.load().is_locked_by_me(); }
 
+  bool should_wait() const {
+    LockWord lock_word = word.load();
+    return lock_word.is_locked() && lock_word.has_waiters();
+  }
+
 public:
   static constexpr bool DEADLOCK_SAFE = EnableDeadlockDetection;
 
@@ -176,9 +186,10 @@ public:
   FairMutexImpl(const FairMutexImpl &) = delete;
 
   bool try_lock() {
-    auto old = LockWord::get_unlocked_word();
+    auto old = word.load();
 
-    return word.compare_exchange_strong(old, LockWord::get_lock_word());
+    return !old.is_locked() &&
+           word.compare_exchange_strong(old, old.get_lock_word());
   }
 
   bool is_locked() const { return word.load().is_locked(); }
@@ -211,26 +222,32 @@ public:
   }
 
   void unlock() {
-    while (true) {
+    bool retry = true;
+
+    while (retry) {
       auto old = word.load();
 
       if (old.has_waiters()) {
-        bool wokeup_somebody = false;
-        parkinglot.unpark(this,
-                          [this, &wokeup_somebody](WaitNodeData waitdata) {
-                            wokeup_somebody = true;
-                            transfer_lock(waitdata.tid);
-                            return UnparkControl::RemoveBreak;
-                          });
-
-        if (wokeup_somebody)
-          break;
+        parkinglot.unpark(
+            this,
+            [this, &retry](WaitNodeData waitdata) {
+              retry = false;
+              transfer_lock(waitdata.tid);
+              return UnparkControl::RemoveBreak;
+            },
+            [this, &old, &retry]() {
+              if (is_locked_by_me() &&
+                  word.compare_exchange_strong(old, old.get_unlocked_word())) {
+                retry = false;
+              }
+            });
       } else {
-        if (word.compare_exchange_strong(old, LockWord::get_unlocked_word()))
-          break;
+        if (word.compare_exchange_strong(old, LockWord::get_init_word()))
+          retry = false;
       }
 
-      _mm_pause();
+      if (retry)
+        _mm_pause();
     }
   }
 
