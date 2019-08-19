@@ -7,6 +7,7 @@ set(SRC "${SRC_PATH}/ThreadRegistry.cpp" "${SRC_PATH}/barrier.cpp" "${SRC_PATH}/
 set(BENCH_SRC_PATH "${SRC_PATH}/benchmark")
 set(BENCH_SRC "${BENCH_SRC_PATH}/benchMutex.cpp")
 set(BENCH2_SRC "${BENCH_SRC_PATH}/benchMutex2.cpp")
+set(FAIRTEST_SRC "${SRC_PATH}/fairnessTest.cpp")
 
 # Set project benchmark files. set(BENCHMARK_SRC "${SRC_PATH}/benchmark.cpp")
 

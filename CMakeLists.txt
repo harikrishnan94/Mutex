@@ -28,6 +28,7 @@ set(LIB "${PROJECT_NAME}")
 set(TEST "test_${PROJECT_NAME}")
 set(BENCH "bench_${PROJECT_NAME}")
 set(BENCH2 "bench2_${PROJECT_NAME}")
+set(FAIRTEST "mutex_fairness_test")
 
 set(SRC_PATH "${PROJECT_PATH}/src")
 set(TEST_SRC_PATH "${PROJECT_PATH}/test")
@@ -76,6 +77,9 @@ target_link_libraries(${BENCH2}
                               ${CMAKE_THREAD_LIBS_INIT}
                               benchmark::benchmark
                               benchmark::benchmark_main)
+
+add_executable(${FAIRTEST} ${FAIRTEST_SRC})
+target_link_libraries(${FAIRTEST} PRIVATE ${LIB} ${CMAKE_THREAD_LIBS_INIT} ${Boost_LIBRARIES})
 
 add_executable(${TEST} ${TEST_SRC})
 target_link_libraries(${TEST} PRIVATE ${LIB} ${CMAKE_THREAD_LIBS_INIT} doctest::doctest)
