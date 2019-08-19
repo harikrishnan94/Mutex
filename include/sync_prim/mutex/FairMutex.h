@@ -229,7 +229,7 @@ public:
 
       if (old.has_waiters()) {
         parkinglot.unpark(
-            this,
+            this, []() {},
             [this, &retry](WaitNodeData waitdata) {
               retry = false;
               transfer_lock(waitdata.tid);

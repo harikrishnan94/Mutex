@@ -136,6 +136,8 @@ enum class UnparkControl {
   RemoveContinue,
   RetainBreak,
   RemoveBreak,
+  RemoveLaterContinue,
+  RemoveLaterBreak,
 };
 
 enum class ParkResult {
@@ -177,8 +179,10 @@ template <typename Data = folly::Unit> class ParkingLot {
   };
 
   template <typename Key, typename Unparker>
-  void do_unpark(parking_lot_detail::Bucket &bucket, uint64_t key,
-                 Unparker &&func);
+  WaitNode *do_unpark(parking_lot_detail::Bucket &bucket, uint64_t key,
+                      Unparker &&func);
+
+  void wakeup_nodes(WaitNode *nodes);
 
 public:
   ParkingLot() : lotid_(parking_lot_detail::idallocator++) {}
@@ -234,11 +238,13 @@ public:
   /*
    * Unpark API
    *
-   * Same as `unpark`, except `finalfunc` will be called with bucket lock held,
-   * after unparking is done
+   * Same as `unpark`, except `Preprocessor` and `Postprocessor` will be called
+   * with bucket lock held, before and after unparking respectively.
    */
-  template <typename Key, typename Unparker, typename Finally>
-  void unpark(const Key key, Unparker &&func, Finally &&finalfunc);
+  template <typename Key, typename Preprocessor, typename Unparker,
+            typename Postprocessor>
+  void unpark(const Key key, Preprocessor &&preprocess, Unparker &&func,
+              Postprocessor &&postprocess);
 };
 
 template <typename Data>
@@ -284,25 +290,64 @@ ParkResult ParkingLot<Data>::park_until(
 
 template <typename Data>
 template <typename Key, typename Func>
-void ParkingLot<Data>::do_unpark(parking_lot_detail::Bucket &bucket,
-                                 uint64_t key, Func &&func) {
+typename ParkingLot<Data>::WaitNode *
+ParkingLot<Data>::do_unpark(parking_lot_detail::Bucket &bucket, uint64_t key,
+                            Func &&func) {
+  WaitNode *nodes = nullptr, *tail = nullptr;
+
   for (auto iter = bucket.head_; iter != nullptr;) {
     auto node = static_cast<WaitNode *>(iter);
     iter = iter->next_;
+
     if (node->key_ == key && node->lotid_ == lotid_) {
-      auto result = std::forward<Func>(func)(node->data_);
-      if (result == UnparkControl::RemoveBreak ||
-          result == UnparkControl::RemoveContinue) {
+      auto res = std::forward<Func>(func)(node->data_);
+
+      if (res == UnparkControl::RemoveBreak ||
+          res == UnparkControl::RemoveContinue ||
+          res == UnparkControl::RemoveLaterBreak ||
+          res == UnparkControl::RemoveLaterContinue) {
         // we unlink, but waiter destroys the node
         bucket.erase(node);
+      }
 
+      if (res == UnparkControl::RemoveBreak ||
+          res == UnparkControl::RemoveContinue) {
         node->wake();
       }
-      if (result == UnparkControl::RemoveBreak ||
-          result == UnparkControl::RetainBreak) {
-        return;
+
+      if (res == UnparkControl::RemoveLaterBreak ||
+          res == UnparkControl::RemoveLaterContinue) {
+        if (tail) {
+          node->prev_ = tail;
+          tail->next_ = node;
+          tail = node;
+        } else {
+          tail = node;
+          nodes = node;
+        }
+
+        node->next_ = nullptr;
+      }
+
+      if (res == UnparkControl::RemoveBreak ||
+          res == UnparkControl::RetainBreak ||
+          res == UnparkControl::RemoveLaterBreak) {
+        break;
       }
     }
+  }
+
+  return nodes;
+}
+
+template <typename Data>
+void ParkingLot<Data>::wakeup_nodes(
+    typename ParkingLot<Data>::WaitNode *nodes) {
+  // Fetch next_ before waking up. WaitNode is allocated on other thread's
+  // stack. If woke up, it causes data race.
+  for (auto *node = nodes, *next = node; next != nullptr; node = next) {
+    next = static_cast<WaitNode *>(node->next_);
+    node->wake();
   }
 }
 
@@ -319,23 +364,29 @@ void ParkingLot<Data>::unpark(const Key bits, Func &&func) {
   }
 
   std::lock_guard<std::mutex> bucketLock(bucket.mutex_);
-  do_unpark<Data>(bucket, key, func);
+  WaitNode *queue = do_unpark<Data>(bucket, key, func);
+  wakeup_nodes(queue);
 }
 
 template <typename Data>
-template <typename Key, typename Func, typename FinalFunc>
-void ParkingLot<Data>::unpark(const Key bits, Func &&func,
-                              FinalFunc &&finalfunc) {
+template <typename Key, typename Preprocessor, typename Unparker,
+          typename Postprocessor>
+void ParkingLot<Data>::unpark(const Key bits, Preprocessor &&preprocess,
+                              Unparker &&func, Postprocessor &&postprocess) {
   auto key = folly::hash::twang_mix64(uint64_t(bits));
   auto &bucket = parking_lot_detail::Bucket::bucketFor(key);
+  WaitNode *nodes = nullptr;
 
   std::lock_guard<std::mutex> bucketLock(bucket.mutex_);
 
+  std::forward<Preprocessor>(preprocess)();
+
   if (bucket.count_.load(std::memory_order_relaxed) != 0) {
-    do_unpark<Data>(bucket, key, func);
+    nodes = do_unpark<Data>(bucket, key, func);
   }
 
-  std::forward<FinalFunc>(finalfunc)();
+  std::forward<Postprocessor>(postprocess)();
+  wakeup_nodes(nodes);
 }
 
 } // namespace sync_prim
