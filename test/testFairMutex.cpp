@@ -7,7 +7,11 @@
 
 TEST_SUITE_BEGIN("FairMutex");
 
-TEST_CASE("FairMutex Basic") { MutexBasicTest<sync_prim::mutex::FairMutex>(); }
+using Mutex = sync_prim::mutex::FairDeadlockSafeMutex;
+
+TEST_CASE("FairMutex Basic") {
+  MutexBasicTest<Mutex>([](Mutex &m) { return m.lock(); });
+}
 
 TEST_CASE("FairMutex Deadlock Detection") {
   std::atomic<bool> quit = false;
@@ -21,7 +25,8 @@ TEST_CASE("FairMutex Deadlock Detection") {
     }
   });
 
-  MutexDeadlockDetectionTest<sync_prim::mutex::FairDeadlockSafeMutex>();
+  MutexDeadlockDetectionTest<sync_prim::mutex::FairDeadlockSafeMutex>(
+      [](Mutex &m) { return m.lock(); });
   quit = true;
   deadlock_detection_worker.join();
 }

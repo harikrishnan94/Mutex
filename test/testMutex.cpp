@@ -3,12 +3,14 @@
 
 TEST_SUITE_BEGIN("Mutex");
 
+using Mutex = sync_prim::mutex::DeadlockSafeMutex;
+
 TEST_CASE("Mutex Basic") {
-  MutexBasicTest<sync_prim::mutex::DeadlockSafeMutex>();
+  MutexBasicTest<Mutex>([](Mutex &m) { return m.lock(); });
 }
 
 TEST_CASE("Mutex Deadlock Detection") {
-  MutexDeadlockDetectionTest<sync_prim::mutex::DeadlockSafeMutex>();
+  MutexDeadlockDetectionTest<Mutex>([](Mutex &m) { return m.lock(); });
 }
 
 TEST_SUITE_END();
