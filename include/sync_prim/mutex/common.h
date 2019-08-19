@@ -13,6 +13,6 @@
 
 namespace sync_prim {
 namespace mutex {
-enum class MutexLockResult { LOCKED, DEADLOCKED };
+enum class MutexLockResult { LOCKED, WAITED_UNTIL_FREE, DEADLOCKED };
 } // namespace mutex
 } // namespace sync_prim

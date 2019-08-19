@@ -20,6 +20,7 @@ private:
 
   struct WaitNodeData {
     thread_id_t tid;
+    bool wait_until_free;
     std::uint64_t wait_token;
     bool *is_dead_locked;
   };
@@ -54,13 +55,14 @@ private:
   class alignas(std::uint64_t) LockWord {
   public:
     thread_id_t holder;
-    std::uint32_t num_waiters;
+    std::uint32_t num_waiters : 31;
+    std::uint32_t wait_until_free : 1;
 
   private:
     static constexpr auto INVALID_HOLDER = ThreadRegistry::MAX_THREADS;
 
   public:
-    static LockWord get_init_word() { return {INVALID_HOLDER, 0}; }
+    static LockWord get_init_word() { return {INVALID_HOLDER, 0, false}; }
 
     bool is_locked() const { return holder != INVALID_HOLDER; }
 
@@ -69,19 +71,33 @@ private:
     }
 
     bool has_waiters() const { return num_waiters != 0; }
+    bool has_wait_until_free() const { return wait_until_free; }
 
     LockWord get_lock_word() {
-      return {ThreadRegistry::ThreadID(), num_waiters};
+      return {ThreadRegistry::ThreadID(), num_waiters, false};
     }
 
-    LockWord get_unlocked_word() { return {INVALID_HOLDER, num_waiters}; }
+    LockWord get_unlocked_word() {
+      return {INVALID_HOLDER, num_waiters, false};
+    }
 
     LockWord transfer_lock(thread_id_t tid) const {
-      return {tid, num_waiters - 1};
+      return {tid, static_cast<std::uint32_t>(num_waiters - 1), false};
     }
 
-    LockWord increment_num_waiters() const { return {holder, num_waiters + 1}; }
-    LockWord decrement_num_waiters() const { return {holder, num_waiters - 1}; }
+    LockWord increment_num_waiters() const {
+      return {holder, static_cast<std::uint32_t>(num_waiters + 1),
+              wait_until_free};
+    }
+
+    LockWord decrement_num_waiters() const {
+      return {holder, static_cast<std::uint32_t>(num_waiters - 1),
+              wait_until_free};
+    }
+
+    LockWord set_wait_until_free() const {
+      return {holder, static_cast<std::uint32_t>(num_waiters), true};
+    }
   };
 
   std::atomic<LockWord> word{LockWord::get_init_word()};
@@ -116,52 +132,87 @@ private:
       auto old = word.load();
 
       if (word.compare_exchange_strong(old, old.transfer_lock(tid)))
-        break;
+        return;
 
       _mm_pause();
     }
   }
 
-  enum { PARKRES_RETRY, PARKRES_LOCKED, PARKRES_DEADLOCKED };
+  void set_wait_until_free() {
+    while (true) {
+      auto old = word.load();
 
-  int park() {
-    auto park = [this]() -> std::pair<ParkResult, bool> {
-      bool is_dead_locked = false;
+      if (word.compare_exchange_strong(old, old.set_wait_until_free()))
+        return;
 
-      if constexpr (EnableDeadlockDetection) {
-        auto &my_deadlock_detect_data =
-            global_wait_info[ThreadRegistry::ThreadID()];
-        std::uint64_t wait_token = my_deadlock_detect_data.announce_wait(this);
-        WaitNodeData waitdata{ThreadRegistry::ThreadID(), wait_token,
-                              &is_dead_locked};
+      _mm_pause();
+    }
+  }
 
-        auto res = parkinglot.park(
-            this, waitdata, [&]() { return should_wait(); }, []() {});
+  bool is_locked_by_me() const { return word.load().is_locked_by_me(); }
 
-        my_deadlock_detect_data.denounce_wait();
+  bool should_wait() const {
+    LockWord lock_word = word.load();
+    return lock_word.is_locked() && lock_word.has_waiters();
+  }
 
-        if (is_dead_locked)
-          decrement_num_waiters();
+  template <bool WaitUntilFree> auto do_park() -> std::pair<ParkResult, bool> {
+    bool is_dead_locked = false;
 
-        return {res, is_dead_locked};
-      } else {
-        WaitNodeData waitdata{ThreadRegistry::ThreadID(), 0, nullptr};
+    auto park_cond = [&]() {
+      if (should_wait()) {
+        if constexpr (WaitUntilFree)
+          set_wait_until_free();
 
-        auto res = parkinglot.park(
-            this, waitdata, [&]() { return should_wait(); }, []() {});
-
-        return {res, false};
+        return true;
       }
+
+      return false;
     };
 
+    if constexpr (EnableDeadlockDetection) {
+      auto &my_deadlock_detect_data =
+          global_wait_info[ThreadRegistry::ThreadID()];
+      std::uint64_t wait_token = my_deadlock_detect_data.announce_wait(this);
+      WaitNodeData waitdata{ThreadRegistry::ThreadID(), WaitUntilFree,
+                            wait_token, &is_dead_locked};
+
+      auto res = parkinglot.park(this, waitdata, park_cond, []() {});
+
+      my_deadlock_detect_data.denounce_wait();
+
+      if (is_dead_locked)
+        decrement_num_waiters();
+
+      return {res, is_dead_locked};
+    } else {
+      WaitNodeData waitdata{ThreadRegistry::ThreadID(), WaitUntilFree, 0,
+                            nullptr};
+
+      auto res = parkinglot.park(this, waitdata, park_cond, []() {});
+
+      return {res, false};
+    }
+  }
+
+  enum {
+    PARKRES_RETRY,
+    PARKRES_LOCK_RELEASED,
+    PARKRES_LOCKED,
+    PARKRES_DEADLOCKED
+  };
+
+  template <bool WaitUntilFree> int park() {
     if (increment_num_waiters()) {
-      switch (auto res = park(); res.first) {
+      switch (auto res = do_park<WaitUntilFree>(); res.first) {
       case ParkResult::Skip:
         decrement_num_waiters();
         return PARKRES_RETRY;
 
       case ParkResult::Unpark:
-        return res.second ? PARKRES_DEADLOCKED : PARKRES_LOCKED;
+        return res.second
+                   ? PARKRES_DEADLOCKED
+                   : (WaitUntilFree ? PARKRES_LOCK_RELEASED : PARKRES_LOCKED);
 
       default:
         assert("cannot reach here");
@@ -171,11 +222,55 @@ private:
     return PARKRES_RETRY;
   }
 
-  bool is_locked_by_me() const { return word.load().is_locked_by_me(); }
+  void unpark_waiters(std::optional<thread_id_t> xfer_tid, bool wokeup_somebody,
+                      bool wait_until_free) {
+    if (xfer_tid) {
+      assert(wokeup_somebody);
+      transfer_lock(*xfer_tid);
+    } else {
+      if (wokeup_somebody)
+        assert(wait_until_free);
 
-  bool should_wait() const {
-    LockWord lock_word = word.load();
-    return lock_word.is_locked() && lock_word.has_waiters();
+      while (true) {
+        auto old = word.load();
+
+        if (wait_until_free)
+          assert(old.has_wait_until_free());
+
+        if (word.compare_exchange_strong(old, old.get_unlocked_word()))
+          break;
+      }
+    }
+  }
+
+  void unlock_slow_path(LockWord old) {
+    bool wait_until_free = false;
+    bool wokeup_somebody = false;
+    std::optional<thread_id_t> xfer_tid;
+
+    parkinglot.unpark(
+        this, [&]() { wait_until_free = word.load().has_wait_until_free(); },
+        [&](WaitNodeData waitdata) {
+          if (!waitdata.wait_until_free) {
+            if (!wokeup_somebody) {
+              *xfer_tid = waitdata.tid;
+
+              if (!wait_until_free)
+                transfer_lock(waitdata.tid);
+            }
+          } else {
+            assert(wait_until_free);
+            decrement_num_waiters();
+          }
+
+          wokeup_somebody = true;
+          return wait_until_free ? UnparkControl::RemoveLaterContinue
+                                 : UnparkControl::RemoveBreak;
+        },
+        [&]() {
+          if (is_locked_by_me())
+            unpark_waiters(xfer_tid, wokeup_somebody, wait_until_free);
+        });
   }
 
 public:
@@ -188,20 +283,29 @@ public:
   bool try_lock() {
     auto old = word.load();
 
-    return !old.is_locked() &&
-           word.compare_exchange_strong(old, old.get_lock_word());
+    // Other threads may not have decremented num waiters,
+    // so don't reset num_waiters.
+
+    if (!old.is_locked() &&
+        word.compare_exchange_strong(old, old.get_lock_word())) {
+      assert(old.wait_until_free == false);
+      return true;
+    }
+
+    return false;
   }
 
   bool is_locked() const { return word.load().is_locked(); }
 
   MutexLockResult lock() {
+    constexpr bool NORMAL_LOCK = false;
     while (true) {
       if (try_lock())
         break;
 
       _mm_pause();
 
-      switch (park()) {
+      switch (park<NORMAL_LOCK>()) {
       case PARKRES_RETRY:
         assert(!is_locked_by_me());
         break;
@@ -217,7 +321,43 @@ public:
     }
 
     assert(is_locked_by_me());
+    return MutexLockResult::LOCKED;
+  }
 
+  // Acquire lock, or wait until it's free
+  // (inspired from PostgreSQL's `LWLockAcquireOrWait`)
+  //
+  // The semantics of this function are a bit funky.  If the lock is currently
+  // free, it is acquired in the given mode, and the function returns true.  If
+  // the lock isn't immediately free, the function waits until it is released
+  // and returns false, but does not acquire the lock.
+  MutexLockResult lock_or_wait() {
+    constexpr bool WAITED_UNTIL_FREE = true;
+    while (true) {
+      if (try_lock())
+        break;
+
+      _mm_pause();
+
+      switch (park<WAITED_UNTIL_FREE>()) {
+      case PARKRES_RETRY:
+        assert(!is_locked_by_me());
+        break;
+
+      case PARKRES_LOCK_RELEASED:
+        assert(!is_locked_by_me());
+        return MutexLockResult::WAITED_UNTIL_FREE;
+
+      case PARKRES_DEADLOCKED:
+        assert(!is_locked_by_me());
+        return MutexLockResult::DEADLOCKED;
+
+      case PARKRES_LOCKED:
+        assert("cannot reach here");
+      }
+    }
+
+    assert(is_locked_by_me());
     return MutexLockResult::LOCKED;
   }
 
@@ -228,26 +368,14 @@ public:
       auto old = word.load();
 
       if (old.has_waiters()) {
-        parkinglot.unpark(
-            this, []() {},
-            [this, &retry](WaitNodeData waitdata) {
-              retry = false;
-              transfer_lock(waitdata.tid);
-              return UnparkControl::RemoveBreak;
-            },
-            [this, &old, &retry]() {
-              if (is_locked_by_me() &&
-                  word.compare_exchange_strong(old, old.get_unlocked_word())) {
-                retry = false;
-              }
-            });
+        unlock_slow_path(old);
+        retry = false;
       } else {
         if (word.compare_exchange_strong(old, LockWord::get_init_word()))
           retry = false;
+        else
+          _mm_pause();
       }
-
-      if (retry)
-        _mm_pause();
     }
   }
 
@@ -303,6 +431,8 @@ private:
     std::unordered_map<thread_id_t, WaiterInfo> waiters{};
     std::unordered_map<FairDeadlockSafeMutex *, thread_id_t> holders{};
 
+    using LockCycle = std::unordered_map<thread_id_t, FairDeadlockSafeMutex *>;
+
     void gather_waiters_and_holders_info() {
       waiters.clear();
       holders.clear();
@@ -336,9 +466,9 @@ private:
       }
     }
 
-    std::unordered_map<thread_id_t, FairDeadlockSafeMutex *>
-    detect_lock_cycle(thread_id_t waiterid, FairDeadlockSafeMutex *lock) {
-      std::unordered_map<thread_id_t, FairDeadlockSafeMutex *> lockcycle;
+    LockCycle detect_lock_cycle(thread_id_t waiterid,
+                                FairDeadlockSafeMutex *lock) {
+      LockCycle lockcycle;
 
       lockcycle[waiterid] = lock;
 
@@ -362,9 +492,7 @@ private:
       }
     }
 
-    thread_id_t
-    select_waiter(const std::unordered_map<thread_id_t, FairDeadlockSafeMutex *>
-                      &lockcycle) {
+    thread_id_t select_waiter(const LockCycle &lockcycle) {
       TimePoint latest_time;
       thread_id_t latest_waiter = ThreadRegistry::INVALID_THREADID;
 
@@ -386,9 +514,7 @@ private:
       return latest_waiter;
     }
 
-    bool verify_lock_cycle(
-        const std::unordered_map<thread_id_t, FairDeadlockSafeMutex *>
-            &lockcycle) {
+    bool verify_lock_cycle(const LockCycle &lockcycle) {
       if (lockcycle.empty())
         return false;
 
