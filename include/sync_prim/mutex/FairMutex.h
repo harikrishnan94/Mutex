@@ -20,6 +20,7 @@ private:
   using WaitToken = typename DeadlockDetector::WaitToken;
 
   struct WaitNodeData {
+    const FairMutexImpl *m;
     thread_id_t tid;
     bool wait_until_free;
     WaitToken wait_token;
@@ -149,7 +150,7 @@ private:
 
     if constexpr (EnableDeadlockDetection) {
       auto wait_token = deadlock_detector.init_park(this);
-      WaitNodeData waitdata{ThreadRegistry::ThreadID(), WaitUntilFree,
+      WaitNodeData waitdata{this, ThreadRegistry::ThreadID(), WaitUntilFree,
                             wait_token};
 
       auto res = parkinglot.park(this, waitdata, park_cond, []() {});
@@ -160,7 +161,7 @@ private:
 
       return {res, is_dead_locked};
     } else {
-      WaitNodeData waitdata{ThreadRegistry::ThreadID(), WaitUntilFree};
+      WaitNodeData waitdata{this, ThreadRegistry::ThreadID(), WaitUntilFree};
 
       auto res = parkinglot.park(this, waitdata, park_cond, []() {});
 
@@ -195,8 +196,8 @@ private:
     return PARKRES_RETRY;
   }
 
-  void unpark_waiters(std::optional<thread_id_t> xfer_tid, bool wokeup_somebody,
-                      bool wait_until_free) {
+  void finalize_unpark(std::optional<thread_id_t> xfer_tid,
+                       bool wokeup_somebody, bool wait_until_free) {
     if (xfer_tid) {
       assert(wokeup_somebody);
       transfer_lock(*xfer_tid);
@@ -224,6 +225,9 @@ private:
     parkinglot.unpark(
         this, [&]() { wait_until_free = word.load().has_wait_until_free(); },
         [&](WaitNodeData waitdata) {
+          if (waitdata.m != this)
+            return UnparkControl::RetainContinue;
+
           if (!waitdata.wait_until_free) {
             if (!wokeup_somebody) {
               *xfer_tid = waitdata.tid;
@@ -242,7 +246,7 @@ private:
         },
         [&]() {
           if (is_locked_by_me())
-            unpark_waiters(xfer_tid, wokeup_somebody, wait_until_free);
+            finalize_unpark(xfer_tid, wokeup_somebody, wait_until_free);
         });
   }
 

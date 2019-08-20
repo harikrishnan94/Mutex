@@ -19,7 +19,12 @@ private:
       std::conditional_t<EnableDeadlockDetection, MutexImpl, detail::empty_t>>;
   using WaitToken = typename DeadlockDetector::WaitToken;
 
-  struct WaitNodeData {
+  struct BasicWaitNodeData {
+    const MutexImpl *m;
+  };
+
+  struct AdvancedWaitNodeData {
+    const MutexImpl *m;
     thread_id_t tid;
     WaitToken wait_token;
 
@@ -28,8 +33,8 @@ private:
   };
 
   static inline auto parkinglot =
-      ParkingLot<std::conditional_t<EnableDeadlockDetection, WaitNodeData,
-                                    detail::empty_t>>{};
+      ParkingLot<std::conditional_t<EnableDeadlockDetection,
+                                    AdvancedWaitNodeData, BasicWaitNodeData>>{};
   static inline auto deadlock_detector = DeadlockDetector{};
 
   class LockWord {
@@ -95,7 +100,8 @@ private:
   bool park() const {
     if constexpr (EnableDeadlockDetection) {
       auto wait_token = deadlock_detector.init_park(this);
-      WaitNodeData waitdata{ThreadRegistry::ThreadID(), wait_token};
+      AdvancedWaitNodeData waitdata{this, ThreadRegistry::ThreadID(),
+                                    wait_token};
 
       parkinglot.park(
           this, waitdata, [&]() { return is_lock_contented(); }, []() {});
@@ -104,7 +110,7 @@ private:
       return is_dead_locked;
     } else {
       parkinglot.park(
-          this, detail::empty_t{}, [&]() { return is_lock_contented(); },
+          this, BasicWaitNodeData{this}, [&]() { return is_lock_contented(); },
           []() {});
     }
 
@@ -185,8 +191,12 @@ public:
   void unlock() {
     auto old = word.exchange(LockWord::get_unlocked_word());
 
-    if (old.is_lock_contented())
-      parkinglot.unpark(this, [](auto) { return UnparkControl::RemoveBreak; });
+    if (old.is_lock_contented()) {
+      parkinglot.unpark(this, [this](auto waitdata) {
+        return waitdata.m == this ? UnparkControl::RemoveBreak
+                                  : UnparkControl::RetainContinue;
+      });
+    }
   }
 
   template <typename Dummy = void,
