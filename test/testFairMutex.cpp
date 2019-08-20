@@ -14,25 +14,12 @@ TEST_CASE("FairMutex Basic") {
 }
 
 template <bool WaitUntilFree = false> void TestDeadlockDetection() {
-  std::atomic<bool> quit = false;
-  std::thread deadlock_detection_worker([&quit]() {
-    while (!quit) {
-      using namespace std::chrono_literals;
-      static auto DEADLOCK_DETECT_TIMEOUT = 100ms;
-
-      std::this_thread::sleep_for(DEADLOCK_DETECT_TIMEOUT);
-      Mutex::detect_deadlocks();
-    }
-  });
-
   MutexDeadlockDetectionTest<Mutex>([](Mutex &m) {
     if constexpr (WaitUntilFree)
       return m.lock_or_wait();
     else
       return m.lock();
   });
-  quit = true;
-  deadlock_detection_worker.join();
 }
 
 TEST_CASE("FairMutex Deadlock Detection") { TestDeadlockDetection(); }

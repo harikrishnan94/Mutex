@@ -77,6 +77,17 @@ void MutexDeadlockDetectionTest(Lock2Func &&lock2func) {
     sync_prim::ThreadRegistry::UnregisterThread();
   };
 
+  std::atomic<bool> quit = false;
+  std::thread deadlock_detection_worker([&quit]() {
+    while (!quit) {
+      using namespace std::chrono_literals;
+      static auto DEADLOCK_DETECT_TIMEOUT = 100ms;
+
+      std::this_thread::sleep_for(DEADLOCK_DETECT_TIMEOUT);
+      DeadlockSafeMutex::detect_deadlocks();
+    }
+  });
+
   for (int i = 0; i < NumThreads; i++) {
     workers.emplace_back(worker, std::ref(mutexes[i]),
                          std::ref(mutexes[(i + 1) % NumThreads]));
@@ -85,6 +96,9 @@ void MutexDeadlockDetectionTest(Lock2Func &&lock2func) {
   for (auto &worker : workers) {
     worker.join();
   }
+
+  quit = true;
+  deadlock_detection_worker.join();
 
   REQUIRE(deadlock_count == 1);
   REQUIRE(success_count == NumThreads - 1);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DeadlockDetector.h"
 #include "sync_prim/ParkingLot.h"
 #include "sync_prim/ThreadRegistry.h"
 
