@@ -37,7 +37,7 @@ public:
 
     if (!word.is_locked() &&
         m_word.compare_exchange_strong(word, word.get_lock_word())) {
-      assert(word.wait_until_free == false);
+      assert(!word.has_wait_until_free());
       return true;
     }
 
@@ -156,14 +156,15 @@ private:
   class alignas(std::uint64_t) LockWord {
   public:
     thread_id_t holder;
-    std::uint32_t num_waiters : 31;
-    std::uint32_t wait_until_free : 1;
+    std::uint32_t num_waiters;
 
   private:
+    using u32Bits = detail::Bits<std::uint32_t>;
     static constexpr auto INVALID_HOLDER = ThreadRegistry::MAX_THREADS;
+    static constexpr auto WAIT_UNTIL_FREE_BIT = 31;
 
   public:
-    static LockWord get_init_word() { return {INVALID_HOLDER, 0, false}; }
+    static LockWord get_init_word() { return {INVALID_HOLDER, 0}; }
 
     bool is_locked() const { return holder != INVALID_HOLDER; }
 
@@ -172,32 +173,40 @@ private:
     }
 
     bool has_waiters() const { return num_waiters != 0; }
-    bool has_wait_until_free() const { return wait_until_free; }
+    bool has_wait_until_free() const {
+      return u32Bits ::AllSet(num_waiters, WAIT_UNTIL_FREE_BIT);
+    }
 
     LockWord get_lock_word() {
-      return {ThreadRegistry::ThreadID(), num_waiters, false};
+      return {ThreadRegistry::ThreadID(),
+              u32Bits ::Clear(num_waiters, WAIT_UNTIL_FREE_BIT)};
     }
 
     LockWord get_unlocked_word() {
-      return {INVALID_HOLDER, num_waiters, false};
+      return {INVALID_HOLDER,
+              u32Bits ::Clear(num_waiters, WAIT_UNTIL_FREE_BIT)};
     }
 
     LockWord transfer_lock(thread_id_t tid) const {
-      return {tid, static_cast<std::uint32_t>(num_waiters - 1), false};
+      return {tid, u32Bits ::Clear(num_waiters, WAIT_UNTIL_FREE_BIT) - 1};
     }
 
     LockWord increment_num_waiters() const {
-      return {holder, static_cast<std::uint32_t>(num_waiters + 1),
-              wait_until_free};
+      return {holder,
+              u32Bits ::MaskedOp(
+                  num_waiters, [](auto num_waiters) { return num_waiters + 1; },
+                  WAIT_UNTIL_FREE_BIT)};
     }
 
     LockWord decrement_num_waiters() const {
-      return {holder, static_cast<std::uint32_t>(num_waiters - 1),
-              wait_until_free};
+      return {holder,
+              u32Bits ::MaskedOp(
+                  num_waiters, [](auto num_waiters) { return num_waiters - 1; },
+                  WAIT_UNTIL_FREE_BIT)};
     }
 
     LockWord set_wait_until_free() const {
-      return {holder, static_cast<std::uint32_t>(num_waiters), true};
+      return {holder, u32Bits ::Set(num_waiters, WAIT_UNTIL_FREE_BIT)};
     }
   };
 

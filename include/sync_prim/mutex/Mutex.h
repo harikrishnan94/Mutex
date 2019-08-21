@@ -97,10 +97,13 @@ private:
   class LockWord {
     enum class LockState : int8_t { LS_UNLOCKED, LS_LOCKED, LS_CONTENTED };
 
-    static constexpr thread_id_t M_CONTENDED_MASK =
-        1 << (sizeof(thread_id_t) * CHAR_BIT - 1);
+    using TidBits = detail::Bits<thread_id_t>;
+
+    static constexpr auto INVALID_THREADID = ThreadRegistry::INVALID_THREADID;
+    static constexpr int CONTENTED_BIT = sizeof(thread_id_t) * CHAR_BIT - 1;
+
     static constexpr thread_id_t M_UNLOCKED =
-        ThreadRegistry::INVALID_THREADID & ~M_CONTENDED_MASK;
+        TidBits::Clear(INVALID_THREADID, CONTENTED_BIT);
 
   public:
     using WordType =
@@ -125,21 +128,21 @@ private:
 
     bool is_lock_contented() const {
       if constexpr (EnableDeadlockDetection)
-        return (word & M_CONTENDED_MASK) == 0;
+        return TidBits::AnySet(word, CONTENTED_BIT);
       else
         return word == LockState::LS_CONTENTED;
     }
 
     LockWord as_uncontented_word() {
       if constexpr (EnableDeadlockDetection)
-        return word & ~M_CONTENDED_MASK;
+        return TidBits::Clear(word, CONTENTED_BIT);
       else
         return LockState::LS_LOCKED;
     }
 
-    static LockWord get_contented_word() {
+    LockWord get_contented_word() {
       if constexpr (EnableDeadlockDetection)
-        return ThreadRegistry::ThreadID() | M_CONTENDED_MASK;
+        return TidBits::Set(word, CONTENTED_BIT);
       else
         return LockState::LS_CONTENTED;
     }
@@ -193,7 +196,7 @@ private:
   bool try_lock_contended() {
     auto word = LockWord::get_unlocked_word();
 
-    return m_word.compare_exchange_strong(word, LockWord::get_contented_word());
+    return m_word.compare_exchange_strong(word, word.get_contented_word());
   }
 
   MutexLockResult lock_contended() {
