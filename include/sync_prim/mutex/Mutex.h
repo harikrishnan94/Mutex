@@ -128,7 +128,7 @@ private:
 
     bool is_lock_contented() const {
       if constexpr (EnableDeadlockDetection)
-        return TidBits::AnySet(word, CONTENTED_BIT);
+        return TidBits::IsAllSet(word, CONTENTED_BIT);
       else
         return word == LockState::LS_CONTENTED;
     }

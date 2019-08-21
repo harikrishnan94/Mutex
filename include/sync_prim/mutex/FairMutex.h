@@ -174,7 +174,7 @@ private:
 
     bool has_waiters() const { return num_waiters != 0; }
     bool has_wait_until_free() const {
-      return u32Bits ::AllSet(num_waiters, WAIT_UNTIL_FREE_BIT);
+      return u32Bits ::IsAllSet(num_waiters, WAIT_UNTIL_FREE_BIT);
     }
 
     LockWord get_lock_word() {

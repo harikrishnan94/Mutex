@@ -35,13 +35,13 @@ public:
   }
 
   template <typename... Bits>
-  static constexpr bool AllSet(Int w, int first_bit, Bits... bits) {
+  static constexpr bool IsAllSet(Int w, int first_bit, Bits... bits) {
     auto mask = get_mask(first_bit, bits...);
     return (w & mask) == mask;
   }
 
   template <typename... Bits>
-  static constexpr bool AnySet(Int w, int first_bit, Bits... bits) {
+  static constexpr bool IsAnySet(Int w, int first_bit, Bits... bits) {
     return Get(w, first_bit, bits...) != 0;
   }
 
